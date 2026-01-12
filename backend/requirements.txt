@@ -1,0 +1,31 @@
+# FastAPI Core
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database
+sqlalchemy
+psycopg2-binary
+alembic
+
+# Redis
+redis
+
+# Authentication & Security
+python-jose[cryptography]
+cryptography
+pyjwt
+
+# Validation & Settings
+pydantic
+pydantic-settings
+
+# HTTP Client
+httpx
+
+# Utilities
+python-dotenv
+
+# Testing (optional for later)
+pytest
+pytest-asyncio

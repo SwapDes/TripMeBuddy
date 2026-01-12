@@ -52,6 +52,19 @@ variable "db_password" {
   sensitive   = true
 }
 
+variable "keycloak_admin_user" {
+  description = "Keycloak admin username"
+  type        = string
+  default     = "admin"
+  sensitive   = true
+}
+
+variable "keycloak_admin_password" {
+  description = "Keycloak admin password"
+  type        = string
+  sensitive   = true
+}
+
 # Data sources
 data "aws_availability_zones" "available" {
   state = "available"
@@ -242,13 +255,16 @@ resource "aws_security_group" "rds" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "PostgreSQL from private subnets"
+    description = "PostgreSQL from private AND public subnets"
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
     cidr_blocks = [
       aws_subnet.private_1.cidr_block,
-      aws_subnet.private_2.cidr_block
+      aws_subnet.private_2.cidr_block,
+      # ADDED: Allow Public Subnets (ECS Tasks) to reach DB
+      aws_subnet.public_1.cidr_block,
+      aws_subnet.public_2.cidr_block
     ]
   }
 
@@ -274,13 +290,16 @@ resource "aws_security_group" "redis" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "Redis from private subnets"
+    description = "Redis from private AND public subnets"
     from_port   = 6379
     to_port     = 6379
     protocol    = "tcp"
     cidr_blocks = [
       aws_subnet.private_1.cidr_block,
-      aws_subnet.private_2.cidr_block
+      aws_subnet.private_2.cidr_block,
+      # ADDED: Allow Public Subnets (ECS Tasks) to reach Redis
+      aws_subnet.public_1.cidr_block,
+      aws_subnet.public_2.cidr_block
     ]
   }
 
@@ -410,19 +429,6 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
-variable "keycloak_admin_user" {
-  description = "Keycloak admin username"
-  type        = string
-  default     = "admin"
-  sensitive   = true
-}
-
-variable "keycloak_admin_password" {
-  description = "Keycloak admin password"
-  type        = string
-  sensitive   = true
-}
-
 # RDS PostgreSQL Instance
 resource "aws_db_instance" "postgres" {
   identifier     = "${var.project_name}-postgres"
@@ -435,7 +441,7 @@ resource "aws_db_instance" "postgres" {
   storage_type          = "gp3"
   storage_encrypted     = true
 
-  db_name  = "tripmebbuddy"
+ db_name  = "tripmebbuddy_v2"
   username = var.db_username
   password = var.db_password
 

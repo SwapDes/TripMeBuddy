@@ -36,19 +36,28 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+package-lock.json
+yarn.lock
+.pnpm-lock.yaml
 
 # Terraform
 .terraform/
 *.tfstate
 *.tfstate.*
 *.tfvars
+*.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
 crash.log
+crash.*.log
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
 .terraformrc
 terraform.rc
+*.tfplan
+.terraform.lock.hcl
 
 # IDE
 .vscode/
@@ -57,17 +66,96 @@ terraform.rc
 *.swo
 *~
 .DS_Store
+.cursor/
+*.code-workspace
 
-# Environment Variables
+# Environment Variables & Secrets
 .env
+.env.*
+!.env.example
 *.pem
 *.key
+*.crt
+*.cer
+*.p12
+*.pfx
+secrets.json
+credentials.json
+service-account.json
 
 # AWS
 *.csv
 credentials
 config
+.aws/
+aws-exports.js
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# Backend Specific
+backend/.env
+backend/config.ini
+backend/alembic.ini
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+
+# Frontend Specific
+frontend/build/
+frontend/dist/
+frontend/.env
+frontend/.env.production
+frontend/.cache/
+
+# Keycloak Specific
+keycloak/data/
+keycloak/standalone/
+keycloak/*.json
+!keycloak/master-realm.json
 
 # Logs
 *.log
 logs/
+*.log.*
+
+# OS Specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Database dumps & backups
+*.sql
+*.dump
+*.bak
+backup/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Project specific notes (if containing sensitive info)
+**/notes.txt
+**/todo.txt
+
+# Add to existing .gitignore
+
+# Alembic migrations data
+backend/alembic/versions/*.pyc
+
+# PyCharm specific
+*.iml
+
+# Virtual environment (if created in backend/)
+backend/venv/
+backend/.venv/
+
+# Environment file (already covered but being explicit)
+
+# Python cache in backend
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
