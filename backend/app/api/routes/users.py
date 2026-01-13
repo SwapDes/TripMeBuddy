@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import text  # Add this import
 from typing import Dict
 from app.core.database import get_db
 from app.core.security import get_current_user, get_current_active_user
@@ -58,8 +59,8 @@ async def test_database_connection(db: Session = Depends(get_db)):
     Public endpoint for debugging.
     """
     try:
-        # Try to execute a simple query
-        db.execute("SELECT 1")
+        # Use text() wrapper for SQLAlchemy 2.0
+        db.execute(text("SELECT 1"))
         return {
             "status": "success",
             "message": "Database connection successful"
