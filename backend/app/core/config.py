@@ -1,6 +1,6 @@
-from typing import List, Union
 from pydantic_settings import BaseSettings
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import field_validator, AnyHttpUrl
+from typing import List, Union
 
 
 class Settings(BaseSettings):
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
 
     # Keycloak Configuration
     KEYCLOAK_SERVER_URL: str
-    KEYCLOAK_REALM: str = "tripmebbuddy"
+    KEYCLOAK_REALM: str = "tripmebuddy"
     KEYCLOAK_CLIENT_ID: str = "trip-me-buddy-backend"
     KEYCLOAK_CLIENT_SECRET: str
 
@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     @property
     def KEYCLOAK_CERTS_URL(self) -> str:
         return f"{self.KEYCLOAK_REALM_URL}/protocol/openid-connect/certs"
+
+    # AI & Travel API Configuration
+    AMADEUS_API_KEY: str = ""
+    AMADEUS_API_SECRET: str = ""
+    GEMINI_API_KEY: str = ""
 
     # CORS Configuration
     BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []

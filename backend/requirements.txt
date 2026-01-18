@@ -30,4 +30,17 @@ python-dotenv==1.2.1
 pytest==9.0.2
 pytest-asyncio==1.3.0
 
+# Email Validation for User
 email-validator==2.3.0
+
+# AI & Agent Framework
+langgraph==1.0.6
+langchain==1.2.3
+langchain-google-genai==4.1.3
+google-generativeai==0.8.6
+
+# Travel API
+amadeus==12.0.0
+
+# Additional utilities
+python-dateutil==2.9.0.post0

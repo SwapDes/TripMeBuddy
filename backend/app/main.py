@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import users
+from app.api.routes import users, travel
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -32,6 +32,7 @@ async def health_check():
 
 # API Routes
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
+app.include_router(travel.router, prefix="/api/v1")
 
 @app.get("/")
 async def root():

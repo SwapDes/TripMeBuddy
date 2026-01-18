@@ -429,6 +429,10 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
+# Data sources for dynamic values
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
 # RDS PostgreSQL Instance
 resource "aws_db_instance" "postgres" {
   identifier     = "${var.project_name}-postgres"

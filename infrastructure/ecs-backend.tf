@@ -125,15 +125,27 @@ resource "aws_ecs_task_definition" "backend" {
       secrets = [
         {
           name      = "DB_USER"
-          valueFrom = "arn:aws:ssm:us-east-1:594585418788:parameter/trip-me-buddy/db-user"
+          valueFrom = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/trip-me-buddy/db-user"
         },
         {
           name      = "DB_PASSWORD"
-          valueFrom = "arn:aws:ssm:us-east-1:594585418788:parameter/trip-me-buddy/db-password"
+          valueFrom = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/trip-me-buddy/db-password"
         },
         {
           name      = "KEYCLOAK_CLIENT_SECRET"
-          valueFrom = "arn:aws:ssm:us-east-1:594585418788:parameter/trip-me-buddy/keycloak-client-secret"
+          valueFrom = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/trip-me-buddy/keycloak-client-secret"
+        },
+        {
+          name      = "AMADEUS_API_KEY"
+          valueFrom = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/trip-me-buddy/amadeus-api-key"
+        },
+        {
+          name      = "AMADEUS_API_SECRET"
+          valueFrom = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/trip-me-buddy/amadeus-api-secret"
+        },
+        {
+          name      = "GEMINI_API_KEY"
+          valueFrom = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/trip-me-buddy/gemini-api-key"
         }
       ]
 
