@@ -1,14 +1,14 @@
-import redis
+import redis.asyncio as redis
 from typing import Optional
 from app.core.config import settings
 
-# Create Redis client
+# Create async Redis client
 redis_client: Optional[redis.Redis] = None
 
 
-def get_redis() -> redis.Redis:
+async def get_redis() -> redis.Redis:
     """
-    Get Redis client instance.
+    Get async Redis client instance.
     Creates connection on first call, reuses for subsequent calls.
     """
     global redis_client
@@ -32,5 +32,5 @@ async def close_redis():
     """
     global redis_client
     if redis_client is not None:
-        redis_client.close()
+        await redis_client.close()
         redis_client = None

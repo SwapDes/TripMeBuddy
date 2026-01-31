@@ -159,3 +159,22 @@ backend/.venv/
 backend/**/__pycache__/
 backend/**/*.pyc
 backend/**/*.pyo
+
+# ============================================================================
+# AUTOMATION SCRIPTS
+
+# Local environment configuration (contains sensitive data)
+.env.local
+*.env.local
+
+# Script logs
+deploy.log
+db-migrate.log
+*.log
+
+# Backup files
+*.bak
+*.backup
+
+# Temporary files from scripts
+.script-cache/

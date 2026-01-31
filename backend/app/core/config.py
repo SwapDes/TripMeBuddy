@@ -18,7 +18,8 @@ class Settings(BaseSettings):
 
     @property
     def DATABASE_URL(self) -> str:
-        return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        """Construct database URL"""
+        return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     # Redis Configuration
     REDIS_HOST: str
@@ -35,8 +36,14 @@ class Settings(BaseSettings):
     # Keycloak Configuration
     KEYCLOAK_SERVER_URL: str
     KEYCLOAK_REALM: str = "tripmebuddy"
-    KEYCLOAK_CLIENT_ID: str = "trip-me-buddy-backend"
-    KEYCLOAK_CLIENT_SECRET: str
+    KEYCLOAK_CLIENT_ID: str = "trip-me-buddy-frontend"
+    KEYCLOAK_CLIENT_SECRET: str = ""  # Not needed for public client validation
+    ALGORITHM: str = "RS256"
+
+    @property
+    def KEYCLOAK_CERTS_URL(self) -> str:
+        """Construct Keycloak certs URL"""
+        return f"{self.KEYCLOAK_SERVER_URL}/realms/{self.KEYCLOAK_REALM}/protocol/openid-connect/certs"
 
     @property
     def KEYCLOAK_REALM_URL(self) -> str:
@@ -45,10 +52,6 @@ class Settings(BaseSettings):
     @property
     def KEYCLOAK_TOKEN_URL(self) -> str:
         return f"{self.KEYCLOAK_REALM_URL}/protocol/openid-connect/token"
-
-    @property
-    def KEYCLOAK_CERTS_URL(self) -> str:
-        return f"{self.KEYCLOAK_REALM_URL}/protocol/openid-connect/certs"
 
     # AI & Travel API Configuration
     AMADEUS_API_KEY: str = ""

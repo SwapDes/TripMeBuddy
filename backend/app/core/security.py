@@ -56,14 +56,14 @@ def decode_token(token: str, public_keys: Dict) -> Dict:
             )
 
         # Decode and validate token
+        # Decode and validate token
         payload = jwt.decode(
             token,
             rsa_key,
             algorithms=[settings.ALGORITHM],
-            audience=settings.KEYCLOAK_CLIENT_ID,
             options={
                 "verify_signature": True,
-                "verify_aud": True,
+                "verify_aud": False,  # Change from True to False
                 "verify_exp": True
             }
         )

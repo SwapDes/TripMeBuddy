@@ -89,7 +89,7 @@ class AmadeusService:
             max_results: int = 10
     ) -> Dict:
         """
-        Search for hotel offers by city
+        Search for hotel offers by city with improved error handling
 
         Args:
             city_code: IATA city code (e.g., 'BKK')
@@ -101,10 +101,11 @@ class AmadeusService:
             max_results: Maximum number of results
 
         Returns:
-            Dict containing hotel offers
+            Dict containing hotel offers or fallback hotel list
         """
         try:
             logger.info(f"Searching hotels in {city_code}")
+            logger.info(f"Dates: {check_in_date} to {check_out_date}, Adults: {adults}")
 
             # First, get hotel IDs in the city
             hotels_response = self.client.reference_data.locations.hotels.by_city.get(
@@ -114,31 +115,76 @@ class AmadeusService:
             )
 
             if not hotels_response.data or len(hotels_response.data) == 0:
-                logger.info(f"No hotels found in city {city_code}")
+                logger.warning(f"No hotels found in city {city_code}")
                 return {
-                    "success": True,
+                    "success": False,
                     "data": [],
                     "count": 0,
-                    "message": f"No hotels found in city {city_code}"
+                    "error": "No hotels found",
+                    "message": f"No hotels available in {city_code}. Try a different destination or nearby city."
                 }
 
             # Get hotel IDs (limit to max_results)
             hotel_ids = [hotel['hotelId'] for hotel in hotels_response.data[:max_results]]
+            hotel_list = hotels_response.data[:max_results]  # Keep full hotel data
             logger.info(f"Found {len(hotel_ids)} hotels in {city_code}")
 
             # Search for offers for these hotels
-            offers_response = self.client.shopping.hotel_offers_search.get(
-                hotelIds=','.join(hotel_ids),
-                checkInDate=check_in_date,
-                checkOutDate=check_out_date,
-                adults=adults
-            )
+            try:
+                offers_response = self.client.shopping.hotel_offers_search.get(
+                    hotelIds=','.join(hotel_ids),
+                    checkInDate=check_in_date,
+                    checkOutDate=check_out_date,
+                    adults=adults
+                )
 
-            logger.info(f"Hotel search successful: {len(offers_response.data) if offers_response.data else 0} results")
+                if offers_response.data and len(offers_response.data) > 0:
+                    logger.info(f"Hotel search successful: {len(offers_response.data)} results with pricing")
+                    return {
+                        "success": True,
+                        "data": offers_response.data,
+                        "count": len(offers_response.data)
+                    }
+                else:
+                    logger.warning(f"No hotel offers available for {check_in_date} to {check_out_date}")
+                    # Fall through to fallback below
+
+            except ResponseError as offers_error:
+                logger.warning(f"Hotel offers API error: {offers_error.description}")
+                # Fall through to fallback below
+
+            # FALLBACK: Return hotel list without pricing when offers unavailable
+            logger.info(f"Using fallback: returning hotel list without live pricing")
+
+            # Format hotel list as basic hotel data
+            fallback_hotels = []
+            for hotel_data in hotel_list[:5]:  # Return top 5
+                fallback_hotels.append({
+                    "type": "hotel",
+                    "hotel": {
+                        "hotelId": hotel_data.get("hotelId"),
+                        "name": hotel_data.get("name", "Hotel"),
+                        "cityCode": city_code,
+                        "latitude": hotel_data.get("geoCode", {}).get("latitude"),
+                        "longitude": hotel_data.get("geoCode", {}).get("longitude"),
+                    },
+                    "offers": [],  # No pricing available
+                    "available": False,  # Mark as unavailable for these dates
+                    "self": f"No live pricing available for {check_in_date}"
+                })
+
             return {
-                "success": True,
-                "data": offers_response.data if offers_response.data else [],
-                "count": len(offers_response.data) if offers_response.data else 0
+                "success": False,  # Mark as unsuccessful since no offers
+                "data": fallback_hotels,
+                "count": len(fallback_hotels),
+                "error": "No hotel offers found",
+                "message": f"Limited hotel availability in {city_code}. Consider nearby cities or adjust search parameters.",
+                "search_params": {
+                    "city_code": city_code,
+                    "check_in": check_in_date,
+                    "check_out": check_out_date
+                },
+                "planning_note": f"Hotels found in {city_code}, but no availability for {check_in_date} to {check_out_date}. This may be due to the date being too far in advance or limited test API data. For actual booking, search closer to travel dates or try booking sites directly."
             }
 
         except ResponseError as error:
@@ -147,53 +193,45 @@ class AmadeusService:
             return {
                 "success": False,
                 "error": error_details,
-                "data": []
+                "data": [],
+                "count": 0,
+                "message": f"Hotel search failed for {city_code}. API error: {error_details}"
             }
 
-    def search_locations(
-            self,
-            keyword: str,
-            subtype: str = "CITY,AIRPORT",
-            max_results: int = 10
-    ) -> Dict:
+        except Exception as e:
+            logger.error(f"Unexpected hotel search error: {str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "data": [],
+                "count": 0,
+                "message": f"Hotel search failed due to unexpected error: {str(e)}"
+            }
+
+    def search_location(self, keyword: str, subtype: str = "CITY,AIRPORT") -> Dict:
         """
-        Search for airports and cities (autocomplete)
+        Search for locations (cities/airports) by keyword
 
         Args:
-            keyword: Search keyword
-            subtype: Location types to search (CITY, AIRPORT, etc.)
-            max_results: Maximum number of results
+            keyword: Search keyword (e.g., "Bangkok", "BKK")
+            subtype: Type of locations to search (CITY, AIRPORT, etc.)
 
         Returns:
-            Dict containing location suggestions
+            Dict containing location search results
         """
         try:
             logger.info(f"Searching locations for keyword: {keyword}")
+
             response = self.client.reference_data.locations.get(
                 keyword=keyword,
-                subType=subtype,
-                page={'limit': max_results}
+                subType=subtype
             )
 
-            # Format response for easier consumption
-            locations = []
-            if response.data:
-                for location in response.data:
-                    locations.append({
-                        "id": location.get('id'),
-                        "name": location.get('name'),
-                        "iata_code": location.get('iataCode'),
-                        "type": location.get('subType'),
-                        "city_name": location.get('address', {}).get('cityName'),
-                        "country_name": location.get('address', {}).get('countryName'),
-                        "country_code": location.get('address', {}).get('countryCode')
-                    })
-
-            logger.info(f"Location search successful: {len(locations)} results")
+            logger.info(f"Location search successful: {len(response.data) if response.data else 0} results")
             return {
                 "success": True,
-                "data": locations,
-                "count": len(locations)
+                "data": response.data,
+                "count": len(response.data) if response.data else 0
             }
 
         except ResponseError as error:
@@ -212,7 +250,7 @@ class AmadeusService:
             departure_date: str
     ) -> Dict:
         """
-        Get price analysis and insights for a route
+        Get flight price analysis and predictions
 
         Args:
             origin: Origin IATA code
@@ -220,20 +258,21 @@ class AmadeusService:
             departure_date: Departure date in YYYY-MM-DD format
 
         Returns:
-            Dict containing price insights
+            Dict containing price analysis
         """
         try:
-            logger.info(f"Getting price analysis for {origin} -> {destination}")
+            logger.info(f"Getting price analysis: {origin} -> {destination}")
+
             response = self.client.analytics.itinerary_price_metrics.get(
                 originIataCode=origin,
                 destinationIataCode=destination,
                 departureDate=departure_date
             )
 
+            logger.info("Price analysis successful")
             return {
                 "success": True,
-                "data": response.data if response.data else {},
-                "has_data": bool(response.data)
+                "data": response.data
             }
 
         except ResponseError as error:
@@ -242,5 +281,5 @@ class AmadeusService:
             return {
                 "success": False,
                 "error": error_details,
-                "data": {}
+                "data": None
             }
