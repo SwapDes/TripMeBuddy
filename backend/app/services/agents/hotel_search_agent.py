@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class HotelSearchAgent:
-    """Agent to search hotels using Amadeus API with currency conversion"""
+    """Agent to search hotels using Amadeus API with currency conversion and budget constraints"""
 
     def __init__(self, amadeus_service, currency_service=None):
         """
@@ -21,14 +21,21 @@ class HotelSearchAgent:
         self.currency_service = currency_service
         logger.info("HotelSearchAgent initialized")
 
-    def search(self, preferences: Dict, destination: Dict, flight_result: Dict) -> Dict:
+    def search(
+        self,
+        preferences: Dict,
+        destination: Dict,
+        flight_result: Dict,
+        budget_allocation: Optional[Dict] = None
+    ) -> Dict:
         """
-        Search for hotels based on preferences, destination, and flight dates
+        Search for hotels based on preferences, destination, flight dates, and budget
 
         Args:
             preferences: User preferences from PreferencesAnalyzerAgent
             destination: Selected destination from DestinationResearchAgent
             flight_result: Flight search results with dates
+            budget_allocation: Optional budget allocation from BudgetAllocationService
 
         Returns:
             Dict with hotel search results
@@ -69,6 +76,16 @@ class HotelSearchAgent:
                     "error": "Could not determine hotel dates"
                 }
 
+            # Extract budget constraint if available
+            max_price_per_night = None
+            budget_currency = None
+            if budget_allocation:
+                hotels_budget = budget_allocation.get('components', {}).get('hotels', {})
+                max_price_per_night = hotels_budget.get('max_per_night')
+                budget_currency = budget_allocation.get('currency')
+                if max_price_per_night:
+                    logger.info(f"Hotel search constrained to max {budget_currency} {max_price_per_night:.2f} per night")
+
             logger.info(f"Searching hotels in {city_code}, {check_in} to {check_out}, {adults} adults")
 
             # Search hotels
@@ -79,20 +96,56 @@ class HotelSearchAgent:
                 adults=adults,
                 radius=10,  # 10 km radius
                 radius_unit="KM",
-                max_results=10
+                max_results=30  # Get more results to filter by budget (increased from 20)
             )
 
             if result.get('data'):
                 # Check for success flag or data presence
                 success = result.get('success', False)
-
-                # Rank hotels based on preferences
-                ranked_hotels = self._rank_hotels(result['data'], preferences)
-
-                # Add currency conversion
+                
+                hotels = result['data']
+                
+                # Add currency conversion first
                 user_currency = preferences.get('budget', {}).get('currency', 'USD')
                 if self.currency_service and user_currency:
-                    ranked_hotels = self._add_currency_conversions(ranked_hotels, user_currency)
+                    hotels = self._add_currency_conversions(hotels, user_currency)
+                
+                # Filter by budget if allocation provided
+                filtered_count = 0
+                planning_note = None
+                
+                if budget_allocation and max_price_per_night:
+                    hotels_before_filter = hotels.copy()
+                    hotels = self._filter_by_budget(hotels, max_price_per_night, budget_currency)
+                    filtered_count = len(hotels_before_filter) - len(hotels)
+                    
+                    # Smart fallback: If ALL hotels filtered out, show cheapest 2-3 anyway
+                    if len(hotels) == 0 and len(hotels_before_filter) > 0:
+                        logger.warning(
+                            f"All {len(hotels_before_filter)} hotels exceeded budget "
+                            f"of {budget_currency} {max_price_per_night:.0f}/night. "
+                            "Showing cheapest options with disclaimer."
+                        )
+                        
+                        # Sort by price and take 2-3 cheapest
+                        hotels_sorted = self._sort_hotels_by_price(hotels_before_filter, budget_currency)
+                        hotels = hotels_sorted[:min(3, len(hotels_sorted))]
+                        filtered_count = len(hotels_before_filter) - len(hotels)
+                        
+                        planning_note = (
+                            f"All available hotels exceed your allocated budget of "
+                            f"{budget_currency} {max_price_per_night:.0f} per night. "
+                            f"Showing the {len(hotels)} most affordable options. "
+                            f"Consider increasing your budget or adjusting travel dates."
+                        )
+                    elif filtered_count > 0:
+                        planning_note = (
+                            f"We filtered {filtered_count} hotel options that exceeded your allocated "
+                            f"hotel budget of {budget_currency} {max_price_per_night:.0f} per night to show you the best affordable options."
+                        )
+
+                # Rank hotels based on preferences
+                ranked_hotels = self._rank_hotels(hotels, preferences, budget_allocation)
 
                 return {
                     "success": success,
@@ -101,12 +154,14 @@ class HotelSearchAgent:
                         "city_code": city_code,
                         "check_in": check_in,
                         "check_out": check_out,
-                        "adults": adults
+                        "adults": adults,
+                        "max_price_per_night": max_price_per_night
                     },
                     "count": len(ranked_hotels),
+                    "filtered_count": filtered_count,
                     "error": result.get('error'),
                     "message": result.get('message'),
-                    "planning_note": result.get('planning_note')
+                    "planning_note": planning_note
                 }
             else:
                 logger.warning(f"No hotels found in {city_code}: {result.get('error')}")
@@ -133,6 +188,70 @@ class HotelSearchAgent:
                 "hotels": [],
                 "error": str(e)
             }
+
+    def _filter_by_budget(
+        self,
+        hotels: List[Dict],
+        max_price_per_night: float,
+        currency: str
+    ) -> List[Dict]:
+        """Filter hotels that exceed nightly budget allocation"""
+        
+        filtered_hotels = []
+        for hotel in hotels:
+            try:
+                offers = hotel.get('offers', [])
+                if not offers:
+                    # No offers - skip this hotel
+                    continue
+                
+                # Get price from first offer
+                price_info = offers[0].get('price', {})
+                converted = price_info.get('converted', {})
+                
+                # Use converted price if available and in correct currency
+                if converted and converted.get('currency') == currency:
+                    hotel_price = converted.get('amount', 0)
+                else:
+                    hotel_price = float(price_info.get('total', 0))
+                
+                # Check if within budget (allow 30% margin for flexibility)
+                if hotel_price <= max_price_per_night * 1.30:
+                    filtered_hotels.append(hotel)
+                else:
+                    logger.debug(
+                        f"Filtered hotel {hotel.get('name', 'Unknown')}: "
+                        f"{currency} {hotel_price:.2f} exceeds budget {max_price_per_night:.2f}"
+                    )
+            
+            except Exception as e:
+                logger.error(f"Error filtering hotel by budget: {e}")
+                # Include hotel if we can't determine price
+                filtered_hotels.append(hotel)
+        
+        logger.info(f"Budget filter: {len(filtered_hotels)}/{len(hotels)} hotels within budget")
+        return filtered_hotels
+
+    def _sort_hotels_by_price(self, hotels: List[Dict], currency: str) -> List[Dict]:
+        """Sort hotels by price (lowest first) for fallback when all exceed budget"""
+        
+        def get_hotel_price(hotel):
+            try:
+                offers = hotel.get('offers', [])
+                if not offers:
+                    return float('inf')  # Hotels without offers go to end
+                
+                price_info = offers[0].get('price', {})
+                converted = price_info.get('converted', {})
+                
+                if converted and converted.get('currency') == currency:
+                    return converted.get('amount', float('inf'))
+                else:
+                    return float(price_info.get('total', float('inf')))
+            except:
+                return float('inf')
+        
+        return sorted(hotels, key=get_hotel_price)
 
     def _add_currency_conversions(self, hotels: List[Dict], target_currency: str) -> List[Dict]:
         """Add converted prices to hotel results"""
@@ -238,8 +357,13 @@ class HotelSearchAgent:
         logger.info(f"Using default hotel dates: {check_in} to {check_out}")
         return check_in, check_out
 
-    def _rank_hotels(self, hotels: List[Dict], preferences: Dict) -> List[Dict]:
-        """Rank hotels based on preferences and price"""
+    def _rank_hotels(
+        self,
+        hotels: List[Dict],
+        preferences: Dict,
+        budget_allocation: Optional[Dict] = None
+    ) -> List[Dict]:
+        """Rank hotels based on preferences, price, and budget adherence"""
 
         budget_level = preferences.get('budget', {}).get('budget_level', 'mid-range')
         accommodation_prefs = preferences.get('accommodation_preferences', ['hotel'])
@@ -250,7 +374,13 @@ class HotelSearchAgent:
             try:
                 offers = hotel.get('offers', [])
                 if offers:
-                    price = float(offers[0].get('price', {}).get('total', 0))
+                    price_info = offers[0].get('price', {})
+                    converted = price_info.get('converted', {})
+                    if converted and 'amount' in converted:
+                        price = float(converted.get('amount', 0))
+                    else:
+                        price = float(price_info.get('total', 0))
+                    
                     if price > 0:
                         prices.append(price)
             except:
@@ -262,13 +392,18 @@ class HotelSearchAgent:
             offers = hotel.get('offers', [])
 
             if not offers:
-                # Hotel has no offers (fallback case) - still include it
+                # Hotel has no offers (fallback case) - still include it with low score
                 hotel['ranking_score'] = 0
                 scored_hotels.append(hotel)
                 continue
 
             try:
-                price = float(offers[0].get('price', {}).get('total', 0))
+                price_info = offers[0].get('price', {})
+                converted = price_info.get('converted', {})
+                if converted and 'amount' in converted:
+                    price = float(converted.get('amount', 0))
+                else:
+                    price = float(price_info.get('total', 0))
 
                 if not prices:
                     # No valid prices at all - give neutral score
@@ -285,6 +420,14 @@ class HotelSearchAgent:
                 else:
                     price_score = 50
 
+                # Bonus for being within budget allocation
+                budget_bonus = 0
+                if budget_allocation:
+                    max_price_per_night = budget_allocation.get('components', {}).get('hotels', {}).get('max_per_night', 0)
+                    if max_price_per_night and price <= max_price_per_night:
+                        # Give 20 point bonus for being within allocated budget
+                        budget_bonus = 20
+
                 # Weight by budget level
                 if budget_level == 'budget':
                     weight = 0.8  # Price matters most
@@ -293,9 +436,11 @@ class HotelSearchAgent:
                 else:
                     weight = 0.5  # Balanced
 
-                final_score = price_score * weight + 50 * (1 - weight)
+                final_score = (price_score * weight + 50 * (1 - weight)) + budget_bonus
 
                 hotel['ranking_score'] = final_score
+                hotel['price_score'] = price_score
+                hotel['budget_bonus'] = budget_bonus
                 scored_hotels.append(hotel)
 
             except Exception as e:
@@ -316,5 +461,9 @@ class HotelSearchAgent:
         if not hotels:
             return None
 
-        # Return highest ranked hotel
-        return hotels[0]
+        # Return highest ranked hotel that has offers
+        for hotel in hotels:
+            if hotel.get('offers'):
+                return hotel
+        
+        return None

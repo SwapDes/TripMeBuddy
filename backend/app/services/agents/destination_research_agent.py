@@ -39,6 +39,9 @@ class DestinationResearchAgent:
             # Parse recommendations
             result = self._parse_research_response(response.text)
 
+            # FIXED: Validate destination matches user preferences
+            result = self._validate_destination_match(result, preferences)
+
             logger.info(f"Found {len(result.get('destinations', []))} destination recommendations")
             return result
 
@@ -59,6 +62,19 @@ class DestinationResearchAgent:
         interests = preferences.get('interests', [])
         travel_style = preferences.get('travel_style', 'comfort')
 
+        # FIXED: Emphasize the requested destination if specified
+        if destination_prefs:
+            destination_instruction = f"""CRITICAL: The user specifically requested: {', '.join(destination_prefs)}
+You MUST recommend the user's requested destination as your top choice unless it is:
+1. Completely inaccessible from {origin} (no flights exist)
+2. Has a travel ban or is unsafe due to conflict/natural disaster
+3. Requires a visa that cannot be obtained
+
+If the requested destination is viable, it MUST be your #1 recommendation.
+Only suggest alternatives if the requested destination is truly impossible."""
+        else:
+            destination_instruction = "The user is open to destination suggestions."
+
         prompt = f"""You are an expert travel destination researcher. Based on the following preferences, recommend the top 3 most suitable destinations.
 
 PREFERENCES:
@@ -71,6 +87,8 @@ PREFERENCES:
 - Departure Date: {dates.get('departure', 'Flexible')}
 - Interests: {', '.join(interests) if interests else 'General travel'}
 - Travel Style: {travel_style}
+
+{destination_instruction}
 
 Provide recommendations in JSON format (no markdown, no code blocks):
 {{
@@ -97,7 +115,7 @@ CRITICAL AIRPORT CODE RULES:
 - airport_code MUST be EXACTLY 3 letters (e.g., "BKK", "MNL", "SIN")
 - DO NOT include descriptive text like "MNL (Manila gateway)" or "BKK - Bangkok"
 - DO NOT include any parentheses, dashes, or additional explanation
-- Examples of CORRECT format: "BKK", "SIN", "MNL", "KBV"
+- Examples of CORRECT format: "BKK", "SIN", "MNL", "KBV", "LHR", "CDG"
 - Examples of WRONG format: "MNL (Manila)", "BKK - Bangkok", "SIN gateway"
 
 Important:
@@ -185,6 +203,80 @@ Important:
                 'error': str(e)
             }
 
+    def _validate_destination_match(self, result: Dict, preferences: Dict) -> Dict:
+        """
+        FIXED: Validate that recommended destinations match user's request
+        Only allow fallback if requested destination is truly inaccessible
+        """
+        destination_prefs = preferences.get('destination_preferences', [])
+        
+        if not destination_prefs:
+            # User didn't specify destination, any recommendation is fine
+            return result
+
+        requested_destination = destination_prefs[0].lower()
+        destinations = result.get('destinations', [])
+
+        if not destinations:
+            logger.warning("No destinations returned by AI")
+            return result
+
+        top_destination = destinations[0]
+        top_city = top_destination.get('city', '').lower()
+        top_country = top_destination.get('country', '').lower()
+
+        # Check if top recommendation matches user request
+        matches = (
+            requested_destination in top_city or 
+            top_city in requested_destination or
+            requested_destination in top_country or
+            top_country in requested_destination
+        )
+
+        if not matches:
+            # AI recommended different destination - this is a fallback
+            logger.warning(
+                f"AI recommended '{top_destination.get('city')}' but user requested '{destination_prefs[0]}'"
+            )
+            
+            # Add warning to result
+            result['fallback_detected'] = True
+            result['requested_destination'] = destination_prefs[0]
+            result['recommended_destination'] = top_destination.get('city')
+            result['fallback_reason'] = top_destination.get('reasoning', 'Unknown reason')
+
+            # Check if user's requested destination exists in the list at all
+            user_destination_found = False
+            for idx, dest in enumerate(destinations):
+                dest_city = dest.get('city', '').lower()
+                dest_country = dest.get('country', '').lower()
+                if (requested_destination in dest_city or 
+                    dest_city in requested_destination or
+                    requested_destination in dest_country):
+                    user_destination_found = True
+                    # Move user's requested destination to top
+                    logger.info(
+                        f"Found user's requested destination '{dest.get('city')}' at position {idx}, moving to top"
+                    )
+                    destinations.insert(0, destinations.pop(idx))
+                    result['destinations'] = destinations
+                    result['fallback_corrected'] = True
+                    break
+
+            if not user_destination_found:
+                logger.warning(
+                    f"User's requested destination '{destination_prefs[0]}' not found in AI recommendations"
+                )
+                # Keep AI's recommendation but flag it clearly
+                result['user_destination_not_found'] = True
+
+        else:
+            # AI correctly recommended user's destination
+            logger.info(f"AI correctly recommended user's requested destination: {top_destination.get('city')}")
+            result['fallback_detected'] = False
+
+        return result
+
     def select_best_destination(self, research_result: Dict) -> Optional[Dict]:
         """Select the best destination from research results"""
         destinations = research_result.get('destinations', [])
@@ -192,8 +284,15 @@ Important:
         if not destinations:
             return None
 
-        # Return highest match score destination
-        best = max(destinations, key=lambda x: x.get('match_score', 0))
+        # Return highest match score destination (which should be user's request if specified)
+        best = destinations[0]
+        
+        # Add fallback metadata if present
+        if research_result.get('fallback_detected'):
+            best['_fallback_detected'] = True
+            best['_requested_destination'] = research_result.get('requested_destination')
+            best['_fallback_reason'] = research_result.get('fallback_reason')
+        
         logger.info(f"Selected destination: {best.get('city', 'Unknown')} (score: {best.get('match_score', 0)})")
 
         return best

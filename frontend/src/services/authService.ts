@@ -6,11 +6,64 @@ class AuthService {
   private keycloakUrl: string;
   private realm: string;
   private clientId: string;
+  private refreshTimer: number | null = null;
 
   constructor() {
     this.keycloakUrl = config.keycloakUrl;
     this.realm = config.keycloakRealm;
     this.clientId = config.keycloakClientId;
+    
+    // Start auto-refresh if token exists
+    this.initializeAutoRefresh();
+  }
+
+  /**
+   * Initialize automatic token refresh on app startup
+   */
+  private initializeAutoRefresh(): void {
+    const accessToken = this.getAccessToken();
+    if (accessToken && !this.isTokenExpired(accessToken)) {
+      this.scheduleTokenRefresh();
+    }
+  }
+
+  /**
+   * Schedule token refresh before expiration
+   */
+  private scheduleTokenRefresh(): void {
+    // Clear existing timer
+    if (this.refreshTimer) {
+      window.clearTimeout(this.refreshTimer);
+    }
+
+    const accessToken = this.getAccessToken();
+    if (!accessToken) return;
+
+    const decoded = this.decodeToken(accessToken);
+    if (!decoded || !decoded.exp) return;
+
+    // Calculate time until expiration
+    const expirationTime = decoded.exp * 1000; // Convert to milliseconds
+    const currentTime = Date.now();
+    const timeUntilExpiry = expirationTime - currentTime;
+
+    // Refresh 60 seconds before expiration (or immediately if < 60 seconds left)
+    const refreshTime = Math.max(timeUntilExpiry - 60000, 1000);
+
+    console.log(`Token refresh scheduled in ${Math.floor(refreshTime / 1000)} seconds`);
+
+    this.refreshTimer = window.setTimeout(async () => {
+      try {
+        console.log('Auto-refreshing token...');
+        await this.refreshToken();
+        // Schedule next refresh
+        this.scheduleTokenRefresh();
+      } catch (error) {
+        console.error('Auto-refresh failed:', error);
+        this.logout();
+        window.location.href = '/login';
+      }
+    }, refreshTime);
   }
 
   /**
@@ -51,6 +104,9 @@ class AuthService {
 
       // Store tokens
       this.setTokens(tokenResponse.access_token, tokenResponse.refresh_token);
+      
+      // Schedule automatic refresh
+      this.scheduleTokenRefresh();
 
       return tokenResponse;
     } catch (error) {
@@ -100,6 +156,8 @@ class AuthService {
       };
 
       this.setTokens(tokenResponse.access_token, tokenResponse.refresh_token);
+      
+      console.log('Token refreshed successfully');
 
       return tokenResponse;
     } catch (error) {
@@ -113,6 +171,10 @@ class AuthService {
    * Logout user
    */
   logout(): void {
+    if (this.refreshTimer) {
+      window.clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
   }

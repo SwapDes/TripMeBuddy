@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Container,
+  Dialog,
+  DialogTitle,
+  DialogContent,
   Box,
   Typography,
   LinearProgress,
   CircularProgress,
   Alert,
-  Paper,
   List,
   ListItem,
   ListItemIcon,
@@ -19,12 +19,19 @@ import {
   Error as ErrorIcon,
 } from '@mui/icons-material';
 
+interface ReplanProgressProps {
+  open: boolean;
+  jobId: string;
+  onComplete: () => void;
+  onError: (error: string) => void;
+}
+
 interface ProgressStep {
   name: string;
   status: 'pending' | 'in_progress' | 'completed' | 'error';
 }
 
-const TRIP_STEPS = [
+const REPLAN_STEPS = [
   'Analyzing preferences',
   'Researching destination',
   'Searching flights',
@@ -32,30 +39,20 @@ const TRIP_STEPS = [
   'Building itinerary',
 ];
 
-const TripProgress: React.FC = () => {
-  const navigate = useNavigate();
+const ReplanProgress: React.FC<ReplanProgressProps> = ({ open, jobId, onComplete, onError }) => {
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('');
   const [status, setStatus] = useState<'in_progress' | 'completed' | 'error'>('in_progress');
   const [errorMessage, setErrorMessage] = useState('');
-  const [tripId, setTripId] = useState<number | null>(null);
   const [steps, setSteps] = useState<ProgressStep[]>(
-    TRIP_STEPS.map(name => ({ name, status: 'pending' }))
+    REPLAN_STEPS.map(name => ({ name, status: 'pending' }))
   );
 
   // Use ref to track completion synchronously (prevents "Connection lost" flash)
   const isCompletedRef = useRef(false);
 
   useEffect(() => {
-    // Get jobId from URL params
-    const params = new URLSearchParams(window.location.search);
-    const jobId = params.get('jobId');
-
-    if (!jobId) {
-      setErrorMessage('No job ID provided');
-      setStatus('error');
-      return;
-    }
+    if (!open || !jobId) return;
 
     // Reset completion flag
     isCompletedRef.current = false;
@@ -76,13 +73,9 @@ const TripProgress: React.FC = () => {
         setCurrentStep(data.current_step || '');
         setStatus(data.status || 'in_progress');
 
-        if (data.trip_id) {
-          setTripId(data.trip_id);
-        }
-
         // Update steps based on progress percentage
         const currentProgress = data.progress || 0;
-        const stepsPercentage = 100 / TRIP_STEPS.length;
+        const stepsPercentage = 100 / REPLAN_STEPS.length;
         
         setSteps(prev => prev.map((step, idx) => {
           const stepThreshold = (idx + 1) * stepsPercentage;
@@ -95,21 +88,22 @@ const TripProgress: React.FC = () => {
         }));
 
         // Handle completion
-        if (data.status === 'completed' && data.progress === 100 && data.trip_id) {
+        if (data.status === 'completed' && data.progress === 100) {
           isCompletedRef.current = true; // Mark as completed IMMEDIATELY
           setSteps(prev => prev.map(step => ({ ...step, status: 'completed' })));
           setTimeout(() => {
             eventSource.close();
-            navigate(`/trips/${data.trip_id}`);
+            onComplete();
           }, 1500);
         }
 
         // Handle errors
         if (data.status === 'failed' || data.error_message) {
-          const error = data.error_message || 'Trip planning failed';
+          const error = data.error_message || 'Trip re-planning failed';
           setErrorMessage(error);
           setStatus('error');
           eventSource.close();
+          onError(error);
         }
       } catch (err) {
         console.error('Error parsing SSE data:', err);
@@ -127,6 +121,7 @@ const TripProgress: React.FC = () => {
           if (!isCompletedRef.current && progress < 100) {
             setErrorMessage('Connection lost. Please refresh to check trip status.');
             setStatus('error');
+            onError('Connection lost');
           }
         }, 500);
       }
@@ -135,7 +130,7 @@ const TripProgress: React.FC = () => {
     return () => {
       eventSource.close();
     };
-  }, [navigate, progress]);
+  }, [jobId, open, progress, onComplete, onError]);
 
   const getStepIcon = (step: ProgressStep) => {
     switch (step.status) {
@@ -155,34 +150,34 @@ const TripProgress: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
-      <Paper elevation={3} sx={{ p: 4 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-          <Typography variant="h4" component="h1">
-            Creating Your Trip
-          </Typography>
+    <Dialog open={open} maxWidth="sm" fullWidth disableEscapeKeyDown>
+      <DialogTitle>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <span>Regenerating Trip Plan</span>
           {status === 'in_progress' && (
-            <CircularProgress size={32} thickness={4} />
+            <CircularProgress size={24} thickness={4} />
           )}
         </Box>
+      </DialogTitle>
 
-        <Box sx={{ mb: 4 }}>
+      <DialogContent>
+        <Box sx={{ mb: 3 }}>
           <LinearProgress 
             variant="determinate" 
             value={progress} 
-            sx={{ height: 10, borderRadius: 5 }}
+            sx={{ height: 8, borderRadius: 4 }}
           />
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant="body2" color="text.secondary">
               {progress}% Complete
             </Typography>
             {status === 'in_progress' && (
               <Typography 
-                variant="body2" 
+                variant="caption" 
                 color="primary" 
                 sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
               >
-                <CircularProgress size={16} thickness={6} />
+                <CircularProgress size={12} thickness={6} />
                 Processing...
               </Typography>
             )}
@@ -190,23 +185,15 @@ const TripProgress: React.FC = () => {
         </Box>
 
         {errorMessage && (
-          <Alert severity="error" sx={{ mb: 3 }}>
+          <Alert severity="error" sx={{ mb: 2 }}>
             {errorMessage}
-            {tripId && (
-              <Box sx={{ mt: 1 }}>
-                <Typography variant="body2">
-                  Your trip may have been partially created.{' '}
-                  <a href={`/trips/${tripId}`}>View trip details</a>
-                </Typography>
-              </Box>
-            )}
           </Alert>
         )}
 
         {currentStep && status === 'in_progress' && (
           <Alert 
             severity="info" 
-            sx={{ mb: 3 }}
+            sx={{ mb: 2 }}
             icon={<CircularProgress size={20} />}
           >
             {currentStep}
@@ -214,8 +201,8 @@ const TripProgress: React.FC = () => {
         )}
 
         {status === 'completed' && (
-          <Alert severity="success" sx={{ mb: 3 }}>
-            Trip created successfully! Redirecting to trip details...
+          <Alert severity="success" sx={{ mb: 2 }}>
+            Trip plan regenerated successfully! Redirecting...
           </Alert>
         )}
 
@@ -231,7 +218,7 @@ const TripProgress: React.FC = () => {
                 }}
               />
               {step.status === 'in_progress' && (
-                <CircularProgress size={20} sx={{ ml: 1 }} />
+                <CircularProgress size={16} sx={{ ml: 1 }} />
               )}
             </ListItem>
           ))}
@@ -241,33 +228,26 @@ const TripProgress: React.FC = () => {
           display: 'flex', 
           flexDirection: 'column', 
           alignItems: 'center', 
-          gap: 1.5, 
-          mt: 4,
-          p: 3,
+          gap: 1, 
+          mt: 3,
+          p: 2,
           bgcolor: 'grey.50',
-          borderRadius: 2
+          borderRadius: 1
         }}>
           {status === 'in_progress' && (
-            <CircularProgress size={40} thickness={4} />
+            <CircularProgress size={32} thickness={4} />
           )}
-          <Typography 
-            variant="body2" 
-            color="text.secondary" 
-            sx={{ textAlign: 'center' }}
-          >
-            This usually takes 60-90 seconds. Please don't close this page.
-          </Typography>
           <Typography 
             variant="caption" 
             color="text.secondary" 
-            sx={{ textAlign: 'center', fontStyle: 'italic' }}
+            sx={{ textAlign: 'center' }}
           >
-            We're searching for the best flights, hotels, and creating a personalized itinerary for you.
+            This usually takes 60-90 seconds. Please don't close this window.
           </Typography>
         </Box>
-      </Paper>
-    </Container>
+      </DialogContent>
+    </Dialog>
   );
 };
 
-export default TripProgress;
+export default ReplanProgress;

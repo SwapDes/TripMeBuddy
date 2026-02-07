@@ -57,7 +57,7 @@ async def create_trip_planning_job(
         job_service = JobService(db, redis)
         job = await job_service.create_job(
             JobCreate(
-                user_id=user_id,  # Get from authenticated user
+                user_id=user_id,
                 job_type="trip_planning",
                 input_data=trip_request.model_dump()
             )

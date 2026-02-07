@@ -52,6 +52,23 @@ interface TripListResponse {
   has_more: boolean;
 }
 
+export interface TripReplanRequest {
+  departure_date?: string;
+  return_date?: string;
+  travelers_count?: number;
+  budget?: number;
+  currency?: string;
+  destination?: string;
+  origin?: string;
+}
+
+export interface TripReplanResponse {
+  success: boolean;
+  job_id: string;
+  message: string;
+  trip_id: number;
+}
+
 class TripService {
   /**
    * Get all trips for the current user with optional pagination
@@ -111,7 +128,7 @@ class TripService {
   }
 
   /**
-   * Update an existing trip
+   * Update an existing trip (quick edit - no re-planning)
    */
   async updateTrip(
     tripId: number,
@@ -130,6 +147,22 @@ class TripService {
       return response.data;
     } catch (error) {
       console.error('Update trip error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Replan trip with new parameters (regenerates entire trip plan)
+   */
+  async replanTrip(tripId: number, request: TripReplanRequest): Promise<TripReplanResponse> {
+    try {
+      const response = await apiClient.post<TripReplanResponse>(
+        `/api/v1/trips/${tripId}/replan`,
+        request
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Replan trip error:', error);
       throw error;
     }
   }
@@ -154,6 +187,19 @@ class TripService {
       return await this.updateTrip(tripId, { is_favorite: isFavorite });
     } catch (error) {
       console.error('Toggle favorite error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get job status
+   */
+  async getJobStatus(jobId: string): Promise<JobResponse> {
+    try {
+      const response = await apiClient.get<JobResponse>(`/api/v1/jobs/${jobId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Get job status error:', error);
       throw error;
     }
   }

@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class FlightSearchAgent:
-    """Agent to search flights using Amadeus API with currency conversion"""
+    """Agent to search flights using Amadeus API with currency conversion and budget constraints"""
 
     def __init__(self, amadeus_service, currency_service=None):
         """
@@ -21,13 +21,14 @@ class FlightSearchAgent:
         self.currency_service = currency_service
         logger.info("FlightSearchAgent initialized")
 
-    def search(self, preferences: Dict, destination: Dict) -> Dict:
+    def search(self, preferences: Dict, destination: Dict, budget_allocation: Optional[Dict] = None) -> Dict:
         """
-        Search for flights based on preferences and selected destination
+        Search for flights based on preferences, destination, and budget allocation
 
         Args:
             preferences: User preferences from PreferencesAnalyzerAgent
             destination: Selected destination from DestinationResearchAgent
+            budget_allocation: Optional budget allocation from BudgetAllocator
 
         Returns:
             Dict with flight search results
@@ -62,9 +63,18 @@ class FlightSearchAgent:
 
             # Search flights
             adults = travelers.get('adults', 1)
+            
+            # Extract budget constraint if available
+            max_price_per_person = None
+            if budget_allocation:
+                flights_budget = budget_allocation.get('components', {}).get('flights', {})
+                max_price_per_person = flights_budget.get('per_person')
+                if max_price_per_person:
+                    logger.info(f"Flight search constrained to max {budget_allocation.get('currency')} {max_price_per_person:.2f} per person")
 
             logger.info(
-                f"Searching: {origin} -> {destination_code}, {departure_date} to {return_date}, {adults} adults")
+                f"Searching: {origin} -> {destination_code}, {departure_date} to {return_date}, {adults} adults"
+            )
 
             result = self.amadeus.search_flights(
                 origin=origin,
@@ -72,17 +82,33 @@ class FlightSearchAgent:
                 departure_date=departure_date,
                 return_date=return_date,
                 adults=adults,
-                max_results=5  # Get top 5 options
+                max_results=10  # Get more options to filter by budget
             )
 
             if result.get('success') and result.get('data'):
-                # Analyze and rank flights
-                ranked_flights = self._rank_flights(result['data'], preferences)
-
-                # Add currency conversion
+                flights = result['data']
+                
+                # Add currency conversion first
                 user_currency = preferences.get('budget', {}).get('currency', 'USD')
                 if self.currency_service and user_currency:
-                    ranked_flights = self._add_currency_conversions(ranked_flights, user_currency)
+                    flights = self._add_currency_conversions(flights, user_currency)
+                
+                # Filter by budget if allocation provided
+                if budget_allocation and max_price_per_person:
+                    budget_currency = budget_allocation.get('currency')
+                    flights = self._filter_by_budget(flights, max_price_per_person, budget_currency)
+                
+                # Rank remaining flights
+                ranked_flights = self._rank_flights(flights, preferences, budget_allocation)
+
+                # Track if we had to filter due to budget
+                filtered_count = len(result['data']) - len(flights)
+                planning_note = None
+                if filtered_count > 0:
+                    planning_note = (
+                        f"We filtered {filtered_count} flight options that exceeded your allocated "
+                        f"flight budget of {budget_currency} {max_price_per_person:.0f} per person to show you the best affordable options."
+                    )
 
                 return {
                     "success": True,
@@ -92,9 +118,12 @@ class FlightSearchAgent:
                         "destination": destination_code,
                         "departure_date": departure_date,
                         "return_date": return_date,
-                        "adults": adults
+                        "adults": adults,
+                        "max_price_per_person": max_price_per_person
                     },
-                    "count": len(ranked_flights)
+                    "count": len(ranked_flights),
+                    "filtered_count": filtered_count,
+                    "planning_note": planning_note
                 }
             else:
                 logger.warning(f"No flights found or search failed: {result.get('error')}")
@@ -117,6 +146,35 @@ class FlightSearchAgent:
                 "flights": [],
                 "error": str(e)
             }
+
+    def _filter_by_budget(self, flights: List[Dict], max_price_per_person: float, currency: str) -> List[Dict]:
+        """Filter flights that exceed budget allocation"""
+        
+        filtered_flights = []
+        for flight in flights:
+            try:
+                # Get converted price if available
+                price_info = flight.get('price', {})
+                converted = price_info.get('converted', {})
+                
+                if converted and converted.get('currency') == currency:
+                    flight_price = converted.get('amount', 0)
+                else:
+                    flight_price = float(price_info.get('total', 0))
+                
+                # Check if within budget (allow 10% margin for flexibility)
+                if flight_price <= max_price_per_person * 1.10:
+                    filtered_flights.append(flight)
+                else:
+                    logger.debug(f"Filtered flight: {currency} {flight_price:.2f} exceeds budget {max_price_per_person:.2f}")
+            
+            except Exception as e:
+                logger.error(f"Error filtering flight by budget: {e}")
+                # Include flight if we can't determine price
+                filtered_flights.append(flight)
+        
+        logger.info(f"Budget filter: {len(filtered_flights)}/{len(flights)} flights within budget")
+        return filtered_flights
 
     def _add_currency_conversions(self, flights: List[Dict], target_currency: str) -> List[Dict]:
         """Add converted prices to flight results"""
@@ -256,16 +314,23 @@ class FlightSearchAgent:
         logger.info(f"Using default dates: {departure_date} to {return_date}")
         return departure_date, return_date
 
-    def _rank_flights(self, flights: List[Dict], preferences: Dict) -> List[Dict]:
-        """Rank flights based on preferences (price, duration, stops)"""
+    def _rank_flights(self, flights: List[Dict], preferences: Dict, budget_allocation: Optional[Dict] = None) -> List[Dict]:
+        """Rank flights based on preferences (price, duration, stops) and budget adherence"""
 
         budget_level = preferences.get('budget', {}).get('budget_level', 'mid-range')
 
-        # Extract prices and durations for normalization
+        # Extract prices for normalization
         prices = []
         for flight in flights:
             try:
-                price = float(flight.get('price', {}).get('total', 0))
+                # Use converted price if available
+                price_info = flight.get('price', {})
+                converted = price_info.get('converted', {})
+                if converted and 'amount' in converted:
+                    price = float(converted.get('amount', 0))
+                else:
+                    price = float(price_info.get('total', 0))
+                
                 if price > 0:
                     prices.append(price)
             except:
@@ -281,13 +346,27 @@ class FlightSearchAgent:
         scored_flights = []
         for flight in flights:
             try:
-                price = float(flight.get('price', {}).get('total', 0))
+                # Get price
+                price_info = flight.get('price', {})
+                converted = price_info.get('converted', {})
+                if converted and 'amount' in converted:
+                    price = float(converted.get('amount', 0))
+                else:
+                    price = float(price_info.get('total', 0))
 
                 # Normalize price (0-100, lower is better)
                 if max_price > min_price:
                     price_score = 100 - ((price - min_price) / (max_price - min_price)) * 100
                 else:
                     price_score = 50
+
+                # Bonus for being within budget allocation
+                budget_bonus = 0
+                if budget_allocation:
+                    max_price_per_person = budget_allocation.get('components', {}).get('flights', {}).get('per_person', 0)
+                    if max_price_per_person and price <= max_price_per_person:
+                        # Give 20 point bonus for being within allocated budget
+                        budget_bonus = 20
 
                 # Weight by budget level
                 if budget_level == 'budget':
@@ -297,9 +376,11 @@ class FlightSearchAgent:
                 else:
                     weight = 0.5  # Balanced
 
-                final_score = price_score * weight + 50 * (1 - weight)
+                final_score = (price_score * weight + 50 * (1 - weight)) + budget_bonus
 
                 flight['ranking_score'] = final_score
+                flight['price_score'] = price_score
+                flight['budget_bonus'] = budget_bonus
                 scored_flights.append(flight)
 
             except Exception as e:

@@ -178,3 +178,29 @@ db-migrate.log
 
 # Temporary files from scripts
 .script-cache/
+
+# Build artifacts
+*.zip
+*.tar
+*.tar.gz
+
+# PowerShell files with potential local config
+*.ps1.local
+
+# Logs
+logs.txt
+*.log
+
+# Database credential files
+.pgpass
+pgpass.conf
+
+# SSH keys
+*.pem
+*.ppk
+id_rsa
+id_rsa.pub
+
+# Local utility scripts
+*_local.*
+error_logs.txt

@@ -132,8 +132,12 @@ def start_trip_planning_job_sync(
                 "current_step": "Finalizing your trip plan..."
             })
 
-            # Save trip to database with correct user_id
+            # Save or update trip to database with correct user_id
             trip_id = _save_trip_to_database_sync(db, job_id, result, trip_request, user_id)
+
+            # For re-planning jobs, notify that the trip was updated
+            if trip_request.get('trip_id'):
+                logger.info(f"Re-planning complete - Trip {trip_id} updated with new plan")
 
             # Mark job as completed
             _complete_job_sync(db, redis_client, job_id, result, trip_id)
@@ -254,13 +258,10 @@ def _save_trip_to_database_sync(
         user_id: str
 ) -> int:
     """
-    Save trip to database synchronously with IMPROVED DATE EXTRACTION.
+    Save trip to database synchronously with support for BOTH creation and updating.
     
-    This version:
-    - Tries multiple sources for dates
-    - Handles multiple date formats
-    - Calculates missing duration_days
-    - Logs extraction details for debugging
+    If trip_request contains 'trip_id', updates that existing trip.
+    Otherwise, creates a new trip.
     """
     try:
         from datetime import timedelta
@@ -399,36 +400,77 @@ def _save_trip_to_database_sync(
             currency = "USD"
         
         # ============================================================================
-        # CREATE TRIP RECORD
+        # CHECK IF THIS IS AN UPDATE (REPLAN) OR NEW TRIP
         # ============================================================================
         
-        trip = Trip(
-            user_id=user_id,
-            trip_name=trip_name,
-            destination=destination,
-            country=destination_info.get("country"),
-            origin=preferences.get("origin"),
-            departure_date=departure_date,      # ✅ Now properly extracted
-            return_date=return_date,            # ✅ Now properly extracted
-            duration_days=duration_days,        # ✅ Now properly calculated
-            travelers_count=travelers_count,
-            budget=budget_total,
-            currency=currency,
-            trip_plan=json.dumps(result) if isinstance(result, dict) else result,
-            preferences=json.dumps(preferences) if isinstance(preferences, dict) else preferences,
-            status="planned"
-        )
+        existing_trip_id = trip_request.get('trip_id')
         
-        db.add(trip)
+        if existing_trip_id:
+            # UPDATE EXISTING TRIP
+            logger.info(f"Re-planning: Updating existing trip {existing_trip_id}")
+            print(f"WORKER: Re-planning - Updating existing trip {existing_trip_id}", flush=True)
+            
+            trip = db.query(Trip).filter(
+                Trip.id == existing_trip_id,
+                Trip.user_id == user_id
+            ).first()
+            
+            if not trip:
+                raise ValueError(f"Trip {existing_trip_id} not found for user {user_id}")
+            
+            # Update all fields with new data
+            trip.destination = destination
+            trip.country = destination_info.get("country")
+            trip.origin = preferences.get("origin")
+            trip.departure_date = departure_date
+            trip.return_date = return_date
+            trip.duration_days = duration_days
+            trip.travelers_count = travelers_count
+            trip.budget = budget_total
+            trip.currency = currency
+            trip.trip_plan = json.dumps(result) if isinstance(result, dict) else result
+            trip.preferences = json.dumps(preferences) if isinstance(preferences, dict) else preferences
+            trip.updated_at = datetime.now()
+            
+            # Keep the same trip_name unless destination changed
+            if trip.destination != destination:
+                trip.trip_name = trip_name
+            
+            logger.info(f"Updated trip {trip.id} with new plan")
+            
+        else:
+            # CREATE NEW TRIP
+            logger.info("Creating new trip")
+            print("WORKER: Creating new trip", flush=True)
+            
+            trip = Trip(
+                user_id=user_id,
+                trip_name=trip_name,
+                destination=destination,
+                country=destination_info.get("country"),
+                origin=preferences.get("origin"),
+                departure_date=departure_date,
+                return_date=return_date,
+                duration_days=duration_days,
+                travelers_count=travelers_count,
+                budget=budget_total,
+                currency=currency,
+                trip_plan=json.dumps(result) if isinstance(result, dict) else result,
+                preferences=json.dumps(preferences) if isinstance(preferences, dict) else preferences,
+                status="planned"
+            )
+            
+            db.add(trip)
+        
         db.commit()
         db.refresh(trip)
         
-        logger.info(f"Trip saved successfully with ID: {trip.id} for user: {user_id}")
+        logger.info(f"Trip {'updated' if existing_trip_id else 'saved'} successfully with ID: {trip.id} for user: {user_id}")
         logger.info(f"  - Trip Name: {trip.trip_name}")
         logger.info(f"  - Departure: {trip.departure_date}")
         logger.info(f"  - Return: {trip.return_date}")
         logger.info(f"  - Duration: {trip.duration_days} days")
-        print(f"WORKER: Trip saved with ID: {trip.id} for user: {user_id}", flush=True)
+        print(f"WORKER: Trip {'updated' if existing_trip_id else 'saved'} with ID: {trip.id} for user: {user_id}", flush=True)
         print(f"WORKER:   - Departure: {trip.departure_date}, Return: {trip.return_date}, Duration: {trip.duration_days}", flush=True)
         
         return trip.id
