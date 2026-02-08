@@ -43,6 +43,9 @@ jobs:
         working-directory: ./frontend
         env:
           VITE_API_URL: https://api.senseddreams.com
+          VITE_KEYCLOAK_URL: https://api.senseddreams.com  # Add this
+          VITE_KEYCLOAK_REALM: tripmebuddy                  # Add this
+          VITE_KEYCLOAK_CLIENT_ID: trip-me-buddy-frontend  # Add this
         run: npm run build
 
       - name: Deploy to S3
