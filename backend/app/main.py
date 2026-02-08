@@ -36,6 +36,17 @@ cors_origins = [
     "https://senseddreams.com",
 ]
 
+# Add this logging
+logger.info(f"CORS origins configured: {cors_origins}")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Add origins from settings if configured
 # if settings.BACKEND_CORS_ORIGINS:
 #     cors_origins.extend([str(origin) for origin in settings.BACKEND_CORS_ORIGINS])
