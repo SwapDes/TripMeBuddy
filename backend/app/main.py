@@ -30,8 +30,10 @@ app = FastAPI(
 
 # CORS Configuration - Combined origins
 cors_origins = [
-    "http://localhost:5173",  # Vite dev server
-    "http://localhost:3000",  # Alternative frontend port
+    "http://localhost:5173",
+    "http://localhost:3000", 
+    "https://tripmebuddy.senseddreams.com",
+    "https://senseddreams.com",
 ]
 
 # Add origins from settings if configured
