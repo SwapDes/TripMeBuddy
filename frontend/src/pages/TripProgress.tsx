@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Container,
   Box,
@@ -34,6 +34,7 @@ const TRIP_STEPS = [
 
 const TripProgress: React.FC = () => {
   const navigate = useNavigate();
+  const { jobId } = useParams<{ jobId: string }>();
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('');
   const [status, setStatus] = useState<'in_progress' | 'completed' | 'error'>('in_progress');
@@ -47,10 +48,6 @@ const TripProgress: React.FC = () => {
   const isCompletedRef = useRef(false);
 
   useEffect(() => {
-    // Get jobId from URL params
-    const params = new URLSearchParams(window.location.search);
-    const jobId = params.get('jobId');
-
     if (!jobId) {
       setErrorMessage('No job ID provided');
       setStatus('error');
@@ -135,7 +132,7 @@ const TripProgress: React.FC = () => {
     return () => {
       eventSource.close();
     };
-  }, [navigate, progress]);
+  }, [navigate, jobId]);
 
   const getStepIcon = (step: ProgressStep) => {
     switch (step.status) {
