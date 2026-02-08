@@ -37,8 +37,8 @@ cors_origins = [
 ]
 
 # Add origins from settings if configured
-if settings.BACKEND_CORS_ORIGINS:
-    cors_origins.extend([str(origin) for origin in settings.BACKEND_CORS_ORIGINS])
+# if settings.BACKEND_CORS_ORIGINS:
+#     cors_origins.extend([str(origin) for origin in settings.BACKEND_CORS_ORIGINS])
 
 app.add_middleware(
     CORSMiddleware,
