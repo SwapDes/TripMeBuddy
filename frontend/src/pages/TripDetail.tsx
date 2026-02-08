@@ -15,7 +15,6 @@ import {
   Paper,
   List,
   ListItem,
-  ListItemIcon,
   ListItemText,
 } from '@mui/material';
 import {
@@ -244,7 +243,6 @@ const TripDetailPage: React.FC = () => {
   
   console.log('Full actualPlan:', actualPlan); // DEBUG
   
-  const tripSummary = actualPlan?.trip_summary || {};
   const destinationInfo = actualPlan?.destination_info || {};
   const transportation = actualPlan?.transportation || {};
   const accommodation = actualPlan?.accommodation || {};
