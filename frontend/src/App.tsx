@@ -3,7 +3,6 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 
-// Page imports
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import TripList from './pages/TripList';
@@ -11,15 +10,17 @@ import TripDetail from './pages/TripDetail';
 import NewTrip from './pages/NewTrip';
 import TripProgress from './pages/TripProgress';
 import NotFound from './pages/NotFound';
+import SignUp from './pages/Signup';
+import ForgotPassword from './pages/ForgotPassword';
 
 function App() {
   return (
     <AuthProvider>
       <Routes>
-        {/* Public routes */}
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<SignUp />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
 
-        {/* Protected routes */}
         <Route
           path="/dashboard"
           element={
@@ -71,10 +72,7 @@ function App() {
           }
         />
 
-        {/* Redirects */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        
-        {/* 404 */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AuthProvider>

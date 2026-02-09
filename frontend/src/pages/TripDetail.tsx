@@ -26,7 +26,7 @@ import {
   Delete,
   CalendarMonth,
   People,
-  AttachMoney,
+  AccountBalanceWallet,
   Flight,
   Hotel,
   Place,
@@ -60,13 +60,13 @@ const TripDetailPage: React.FC = () => {
   const [replanJobId, setReplanJobId] = useState<string>('');
 
 
-  console.log('TripDetail mounted, id:', id); // DEBUG
+  console.log('TripDetail mounted, id:', id);
 
   useEffect(() => {
-    console.log('useEffect triggered, id:', id); // DEBUG
+    console.log('useEffect triggered, id:', id);
     
     if (!id) {
-      console.log('No id provided'); // DEBUG
+      console.log('No id provided');
       setError('Trip ID not found in URL');
       setLoading(false);
       return;
@@ -76,9 +76,9 @@ const TripDetailPage: React.FC = () => {
   }, [id]);
 
   const loadTrip = async () => {
-    console.log('loadTrip called, id:', id); // DEBUG
+    console.log('loadTrip called, id:', id);
     if (!id) {
-      console.log('No id, returning'); // DEBUG
+      console.log('No id, returning');
       setLoading(false);
       return;
     }
@@ -86,9 +86,9 @@ const TripDetailPage: React.FC = () => {
     try {
       setLoading(true);
       setError('');
-      console.log('Calling tripService.getTrip with ID:', id); // DEBUG
+      console.log('Calling tripService.getTrip with ID:', id);
       const data = await tripService.getTrip(parseInt(id));
-      console.log('Trip data received:', data); // DEBUG
+      console.log('Trip data received:', data);
       setTrip(data);
     } catch (err: any) {
       console.error('Failed to load trip:', err);
@@ -141,7 +141,7 @@ const TripDetailPage: React.FC = () => {
   const handleReplanComplete = () => {
     setReplanProgressOpen(false);
     setReplanJobId('');
-    loadTrip(); // Refresh trip data
+    loadTrip();
   };
 
   const handleReplanError = (errorMsg: string) => {
@@ -150,7 +150,6 @@ const TripDetailPage: React.FC = () => {
   };
 
 
-  // Check if trip has fallback destination
   const getFallbackInfo = () => {
     if (!trip) return null;
     
@@ -228,55 +227,48 @@ const TripDetailPage: React.FC = () => {
   }
 
   const tripPlan = typeof trip.trip_plan === 'string' ? JSON.parse(trip.trip_plan) : trip.trip_plan;
-  
-  // Navigate the nested structure: trip_plan.trip_plan.trip_plan
   const actualPlan = tripPlan?.trip_plan?.trip_plan || tripPlan?.trip_plan || tripPlan;
   
-  console.log('Full actualPlan:', actualPlan); // DEBUG
+  console.log('Full actualPlan:', actualPlan);
   
   const destinationInfo = actualPlan?.destination_info || {};
   const transportation = actualPlan?.transportation || {};
   const accommodation = actualPlan?.accommodation || {};
   
-  console.log('Transportation object:', transportation); // DEBUG
-  console.log('Accommodation object:', accommodation); // DEBUG
+  console.log('Transportation object:', transportation);
+  console.log('Accommodation object:', accommodation);
   
-  // Flights: outbound, return, and alternatives
   const outboundFlight = transportation?.outbound_flight;
   const returnFlight = transportation?.return_flight;
   const flightAlternatives = transportation?.flight_alternatives || [];
   
-  // Hotels: Check both old format (accommodation) and new format (tripPlan.hotels)
-  const hotelsData = tripPlan?.hotels || {}; // New format
-  const hotelsList = hotelsData?.hotels || []; // Array of hotels from new format
+  const hotelsData = tripPlan?.hotels || {};
+  const hotelsList = hotelsData?.hotels || [];
   
   console.log('=== HOTEL DATA EXTRACTION ===');
   console.log('tripPlan.hotels:', tripPlan?.hotels);
   console.log('hotelsList from new format:', hotelsList);
   
-  // Old format: accommodation.recommended_hotel and accommodation.hotel_alternatives
   const recommendedHotel = accommodation?.recommended_hotel;
   const oldFormatAlternatives = accommodation?.hotel_alternatives || [];
   
   console.log('accommodation.recommended_hotel:', recommendedHotel);
   console.log('accommodation.hotel_alternatives:', oldFormatAlternatives);
   
-  // Combine: use old format if it exists, otherwise use new format
   const hotelAlternatives = oldFormatAlternatives.length > 0 ? oldFormatAlternatives : hotelsList;
   
   console.log('Final hotelAlternatives (using ' + (oldFormatAlternatives.length > 0 ? 'old' : 'new') + ' format):', hotelAlternatives);
   console.log('============================');
   
-  console.log('Hotels data (new format):', hotelsData); // DEBUG
-  console.log('Hotel alternatives:', hotelAlternatives); // DEBUG
+  console.log('Hotels data (new format):', hotelsData);
+  console.log('Hotel alternatives:', hotelAlternatives);
   
   const dailyItinerary = actualPlan?.daily_itinerary || [];
   const planningNotes = actualPlan?.planning_notes || {};
   const budgetBreakdown = actualPlan?.budget_breakdown || {};
   
-  console.log('Budget breakdown object:', budgetBreakdown); // DEBUG
+  console.log('Budget breakdown object:', budgetBreakdown);
   
-  // Get preferences
   const preferences = typeof trip.preferences === 'string' 
     ? JSON.parse(trip.preferences) 
     : trip.preferences;
@@ -286,7 +278,6 @@ const TripDetailPage: React.FC = () => {
   return (
     <Container maxWidth="lg">
       <Box sx={{ mt: 4, mb: 4 }}>
-        {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Button startIcon={<ArrowBack />} onClick={() => navigate('/dashboard')}>
@@ -309,7 +300,6 @@ const TripDetailPage: React.FC = () => {
           </Box>
         </Box>
 
-        {/* Fallback Destination Alert */}
         {fallbackInfo && (
           <Alert severity="info" sx={{ mb: 3 }}>
             <Typography variant="body2" fontWeight="bold" gutterBottom>
@@ -325,7 +315,6 @@ const TripDetailPage: React.FC = () => {
           </Alert>
         )}
 
-        {/* Trip Summary Card */}
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
@@ -377,7 +366,7 @@ const TripDetailPage: React.FC = () => {
 
               {trip.budget && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <AttachMoney color="action" />
+                  <AccountBalanceWallet color="action" />
                   <Box>
                     <Typography variant="body2" color="text.secondary">Budget</Typography>
                     <Typography variant="body1">
@@ -390,7 +379,6 @@ const TripDetailPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Destination Overview */}
         {destinationInfo.description && (
           <Card sx={{ mb: 3 }}>
             <CardContent>
@@ -402,7 +390,6 @@ const TripDetailPage: React.FC = () => {
                 {destinationInfo.description}
               </Typography>
               
-              {/* Highlights */}
               {destinationInfo.highlights && destinationInfo.highlights.length > 0 && (
                 <Box sx={{ mt: 3 }}>
                   <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
@@ -422,9 +409,7 @@ const TripDetailPage: React.FC = () => {
           </Card>
         )}
 
-        {/* Travel Information (Weather, Visa, Cultural Notes) */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 3, mb: 3 }}>
-          {/* Weather */}
           {destinationInfo.weather && (
             <Card sx={{ height: '100%' }}>
               <CardContent>
@@ -439,7 +424,6 @@ const TripDetailPage: React.FC = () => {
             </Card>
           )}
 
-          {/* Visa Requirements */}
           {destinationInfo.visa_requirements && (
             <Card sx={{ height: '100%' }}>
               <CardContent>
@@ -454,7 +438,6 @@ const TripDetailPage: React.FC = () => {
             </Card>
           )}
 
-          {/* Cultural Notes */}
           {destinationInfo.cultural_notes && (
             <Card sx={{ height: '100%' }}>
               <CardContent>
@@ -470,7 +453,6 @@ const TripDetailPage: React.FC = () => {
           )}
         </Box>
 
-        {/* Travel Preferences */}
         {preferences && (preferences.interests || preferences.travel_style || preferences.special_requirements) && (
           <Card sx={{ mb: 3 }}>
             <CardContent>
@@ -480,7 +462,6 @@ const TripDetailPage: React.FC = () => {
               </Box>
               
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 3 }}>
-                {/* Travel Style */}
                 {preferences.travel_style && (
                   <Box>
                     <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -494,7 +475,6 @@ const TripDetailPage: React.FC = () => {
                   </Box>
                 )}
 
-                {/* Interests */}
                 {preferences.interests && preferences.interests.length > 0 && (
                   <Box sx={{ gridColumn: { xs: '1', sm: 'span 2' } }}>
                     <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -514,7 +494,6 @@ const TripDetailPage: React.FC = () => {
                   </Box>
                 )}
 
-                {/* Special Requirements */}
                 {preferences.special_requirements && preferences.special_requirements.length > 0 && (
                   <Box sx={{ gridColumn: '1 / -1' }}>
                     <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -538,30 +517,24 @@ const TripDetailPage: React.FC = () => {
           </Card>
         )}
 
-        {/* Budget Breakdown */}
         {budgetBreakdown.total_estimated && (
           <Card sx={{ mb: 3 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <AttachMoney color="primary" />
+                <AccountBalanceWallet color="primary" />
                 <Typography variant="h6">Budget Breakdown</Typography>
               </Box>
               
-              {/* Calculate conversion rate - use trip budget vs breakdown total */}
               {(() => {
-                // Debug logging
                 console.log('Budget currency:', budgetBreakdown.currency);
                 console.log('Trip currency:', trip.currency);
                 console.log('Trip budget:', trip.budget);
                 console.log('Breakdown total:', budgetBreakdown.total_estimated);
                 
-                // Calculate conversion rate from trip budget and breakdown total
                 let conversionRate = 1;
                 const shouldConvert = budgetBreakdown.currency !== trip.currency;
                 
                 if (shouldConvert && trip.budget && budgetBreakdown.total_estimated) {
-                  // trip.budget is already a number (in user's currency - INR)
-                  // budgetBreakdown.total_estimated is a number (in USD)
                   conversionRate = trip.budget / budgetBreakdown.total_estimated;
                 }
                 
@@ -633,7 +606,6 @@ const TripDetailPage: React.FC = () => {
           </Card>
         )}
 
-        {/* Flights */}
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -646,7 +618,6 @@ const TripDetailPage: React.FC = () => {
               </Alert>
             ) : (
               <>
-                {/* Outbound Flight */}
                 {outboundFlight && (
                   <>
                     <Typography variant="subtitle2" color="primary" gutterBottom>
@@ -682,7 +653,6 @@ const TripDetailPage: React.FC = () => {
                   </>
                 )}
 
-                {/* Return Flight */}
                 {returnFlight && (
                   <>
                     <Typography variant="subtitle2" color="primary" gutterBottom sx={{ mt: 2 }}>
@@ -718,7 +688,6 @@ const TripDetailPage: React.FC = () => {
                   </>
                 )}
 
-                {/* Flight Alternatives */}
                 {flightAlternatives.length > 0 && (
                   <>
                     <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mt: 2 }}>
@@ -766,7 +735,6 @@ const TripDetailPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Hotels */}
         {(() => {
           const validHotels = hotelAlternatives.filter((h: any) => h !== null && h !== undefined);
           console.log('=== HOTEL DEBUG ===');
@@ -785,7 +753,6 @@ const TripDetailPage: React.FC = () => {
                   <Typography variant="h6">Accommodation Options</Typography>
                 </Box>
 
-                {/* Recommended Hotel */}
                 {recommendedHotel && (
                   <>
                     <Typography variant="subtitle2" color="primary" gutterBottom>
@@ -853,26 +820,23 @@ const TripDetailPage: React.FC = () => {
                   </>
                 )}
 
-                {/* Hotel Alternatives */}
                 {validHotels.length > 0 && (
                   <>
                     <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mt: 2 }}>
                       Alternative Hotels
                     </Typography>
                     {validHotels.map((hotelItem: any, idx: number) => {
-                      // Support multiple hotel data formats from backend
-                      const hotelName = hotelItem.name || // Old format: top-level name
-                                       hotelItem.hotel?.name || // New format: nested hotel.name
-                                       hotelItem.details?.hotel?.name || // Old format: details.hotel.name
+                      const hotelName = hotelItem.name || 
+                                       hotelItem.hotel?.name || 
+                                       hotelItem.details?.hotel?.name || 
                                        'Hotel';
                       
                       const hotel = hotelItem.hotel || hotelItem.details?.hotel || {};
                       const offers = hotelItem.offers || hotelItem.details?.offers || [];
                       const firstOffer = offers[0];
                       
-                      // Price can be at multiple paths
                       const priceInfo = firstOffer?.price || hotelItem.price || null;
-                      const pricePerNight = hotelItem.price_per_night; // Old format has this
+                      const pricePerNight = hotelItem.price_per_night;
                     
                     return (
                       <Paper key={idx} variant="outlined" sx={{ p: 2, mb: 2 }}>
@@ -924,9 +888,7 @@ const TripDetailPage: React.FC = () => {
         ) : null;
         })()}
 
-        {/* Daily Itinerary */}
         {dailyItinerary.length > 0 && (() => {
-          // Calculate conversion rate - use trip budget vs breakdown total
           let conversionRate = 1;
           const shouldConvert = budgetBreakdown.currency !== trip.currency;
           
@@ -939,7 +901,7 @@ const TripDetailPage: React.FC = () => {
               <CardContent>
                 <Typography variant="h6" gutterBottom>Daily Itinerary</Typography>
                 {dailyItinerary.map((day: any, idx: number) => {
-                  console.log('Day structure:', day); // DEBUG
+                  console.log('Day structure:', day);
                   
                   return (
                     <Box key={idx} sx={{ mb: 3, pb: 2, borderBottom: idx < dailyItinerary.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
@@ -959,7 +921,6 @@ const TripDetailPage: React.FC = () => {
                         )}
                       </Box>
                       
-                      {/* Activities - only show if title exists and is not empty */}
                       {day.activities && day.activities.length > 0 && (
                         <Box sx={{ ml: 2, mt: 1 }}>
                           {day.activities
@@ -977,7 +938,6 @@ const TripDetailPage: React.FC = () => {
                         </Box>
                       )}
 
-                      {/* Meals */}
                       {day.meals && (
                         <Box sx={{ mt: 1.5, ml: 2, p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
                           <Typography variant="caption" fontWeight="bold" color="text.secondary">
@@ -1004,7 +964,6 @@ const TripDetailPage: React.FC = () => {
           );
         })()}
 
-        {/* Planning Notes */}
         {(planningNotes.defaults_used?.length > 0 || 
           planningNotes.limitations?.length > 0 || 
           planningNotes.alternatives_available?.length > 0) && (
@@ -1081,7 +1040,6 @@ const TripDetailPage: React.FC = () => {
           </Card>
         )}
 
-        {/* User Notes */}
         {trip.user_notes && (
           <Card>
             <CardContent>
@@ -1091,7 +1049,6 @@ const TripDetailPage: React.FC = () => {
           </Card>
         )}
 
-        {/* Edit Modal */}
         {trip && (
           <TripEditModal
             open={editModalOpen}
@@ -1101,7 +1058,6 @@ const TripDetailPage: React.FC = () => {
           />
         )}
 
-        {/* Replan Progress Modal */}
         {replanJobId && (
           <ReplanProgress
             open={replanProgressOpen}

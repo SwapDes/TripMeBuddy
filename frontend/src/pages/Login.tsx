@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -12,10 +12,11 @@ import {
   Paper,
   Alert,
   CircularProgress,
+  Link,
+  Divider,
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 
-// Validation schema
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
@@ -77,7 +78,7 @@ const Login: React.FC = () => {
             </Alert>
           )}
 
-          <Box>
+          <Box component="form" onSubmit={handleSubmit(onSubmit)}>
             <TextField
               fullWidth
               label="Email"
@@ -87,6 +88,7 @@ const Login: React.FC = () => {
               error={!!errors.email}
               helperText={errors.email?.message}
               disabled={isSubmitting}
+              autoComplete="email"
             />
 
             <TextField
@@ -98,6 +100,7 @@ const Login: React.FC = () => {
               error={!!errors.password}
               helperText={errors.password?.message}
               disabled={isSubmitting}
+              autoComplete="current-password"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   handleSubmit(onSubmit)();
@@ -105,14 +108,24 @@ const Login: React.FC = () => {
               }}
             />
 
+            <Box sx={{ mt: 1, mb: 2, textAlign: 'right' }}>
+              <Link
+                component={RouterLink}
+                to="/forgot-password"
+                variant="body2"
+                underline="hover"
+              >
+                Forgot password?
+              </Link>
+            </Box>
+
             <Button
-              type="button"
+              type="submit"
               fullWidth
               variant="contained"
               size="large"
-              sx={{ mt: 3, mb: 2 }}
+              sx={{ mt: 1, mb: 2 }}
               disabled={isSubmitting}
-              onClick={handleSubmit(onSubmit)}
             >
               {isSubmitting ? (
                 <>
@@ -123,11 +136,32 @@ const Login: React.FC = () => {
                 'Login'
               )}
             </Button>
+
+            <Divider sx={{ my: 3 }}>
+              <Typography variant="body2" color="text.secondary">
+                OR
+              </Typography>
+            </Divider>
+
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Don't have an account?
+              </Typography>
+              <Button
+                component={RouterLink}
+                to="/signup"
+                variant="outlined"
+                fullWidth
+                size="large"
+              >
+                Sign Up
+              </Button>
+            </Box>
           </Box>
 
-          <Box sx={{ mt: 2, textAlign: 'center' }}>
-            <Typography variant="body2" color="text.secondary">
-              Demo Credentials: Use your Keycloak test user
+          <Box sx={{ mt: 3, textAlign: 'center' }}>
+            <Typography variant="caption" color="text.secondary">
+              By logging in, you agree to our Terms of Service and Privacy Policy
             </Typography>
           </Box>
         </Paper>

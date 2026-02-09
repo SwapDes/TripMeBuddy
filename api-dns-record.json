@@ -1,0 +1,16 @@
+{
+    "Changes": [
+      {
+        "Action": "CREATE",
+        "ResourceRecordSet": {
+          "Name": "api.senseddreams.com",
+          "Type": "A",
+          "AliasTarget": {
+            "HostedZoneId": "Z35SXDOTRQ7X7K",
+            "DNSName": "trip-me-buddy-alb-990405631.us-east-1.elb.amazonaws.com",
+            "EvaluateTargetHealth": false
+          }
+        }
+      }
+    ]
+  }
