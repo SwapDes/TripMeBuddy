@@ -38,6 +38,14 @@ const CURRENCIES = [
   { code: 'JPY', symbol: '¥' },
 ];
 
+// Helper function to format date without timezone conversion
+const formatDateToYYYYMMDD = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const TripEditModal: React.FC<TripEditModalProps> = ({ open, trip, onClose, onReplan }) => {
   const [departureDate, setDepartureDate] = useState<Date | null>(
     trip.departure_date ? new Date(trip.departure_date) : null
@@ -81,10 +89,10 @@ const TripEditModal: React.FC<TripEditModalProps> = ({ open, trip, onClose, onRe
       return;
     }
 
-    // Build request
+    // Build request with timezone-safe date formatting
     const request: TripReplanRequest = {
-      departure_date: departureDate.toISOString().split('T')[0],
-      return_date: returnDate.toISOString().split('T')[0],
+      departure_date: formatDateToYYYYMMDD(departureDate),
+      return_date: formatDateToYYYYMMDD(returnDate),
       travelers_count: travelers,
       budget: budget,
       currency: currency,
