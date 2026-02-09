@@ -10,7 +10,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: tripmebuddy-backend
+  ECR_REPOSITORY: trip-me-buddy-backend
   ECS_CLUSTER: trip-me-buddy-cluster
   ECS_SERVICE: trip-me-buddy-backend-service
 
