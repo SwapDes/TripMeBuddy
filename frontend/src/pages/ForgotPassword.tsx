@@ -41,6 +41,7 @@ const ForgotPassword: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      console.log('Password reset requested for:', data.email);
       await new Promise(resolve => setTimeout(resolve, 1500));
       setSuccess(true);
     } catch (err: any) {

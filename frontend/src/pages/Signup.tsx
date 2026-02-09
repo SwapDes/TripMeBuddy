@@ -53,6 +53,7 @@ const SignUp: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      console.log('Sign up data:', data);
       await new Promise(resolve => setTimeout(resolve, 1500));
       setSuccess(true);
       reset();
