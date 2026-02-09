@@ -20,6 +20,7 @@ import { Close, Add, Remove } from '@mui/icons-material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import type { TripDetail, TripReplanRequest } from '../services/tripService';
+import { parseDateSafe, formatDateToYYYYMMDD } from '../utils/dateUtils';
 
 interface TripEditModalProps {
   open: boolean;
@@ -38,20 +39,12 @@ const CURRENCIES = [
   { code: 'JPY', symbol: '¥' },
 ];
 
-// Helper function to format date without timezone conversion
-const formatDateToYYYYMMDD = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 const TripEditModal: React.FC<TripEditModalProps> = ({ open, trip, onClose, onReplan }) => {
   const [departureDate, setDepartureDate] = useState<Date | null>(
-    trip.departure_date ? new Date(trip.departure_date) : null
+    parseDateSafe(trip.departure_date)
   );
   const [returnDate, setReturnDate] = useState<Date | null>(
-    trip.return_date ? new Date(trip.return_date) : null
+    parseDateSafe(trip.return_date)
   );
   const [travelers, setTravelers] = useState(trip.travelers_count || 1);
   const [budget, setBudget] = useState(trip.budget || 1000);

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { formatDateForDisplayLong } from '../utils/dateUtils';
 import {
   Container,
   Typography,
@@ -185,16 +186,6 @@ const TripDetailPage: React.FC = () => {
     return null;
   };
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'planned': return 'primary';
@@ -357,7 +348,7 @@ const TripDetailPage: React.FC = () => {
                 <CalendarMonth color="action" />
                 <Box>
                   <Typography variant="body2" color="text.secondary">Departure</Typography>
-                  <Typography variant="body1">{formatDate(trip.departure_date)}</Typography>
+                  <Typography variant="body1">{formatDateForDisplayLong(trip.departure_date)}</Typography>
                 </Box>
               </Box>
 
@@ -365,7 +356,7 @@ const TripDetailPage: React.FC = () => {
                 <CalendarMonth color="action" />
                 <Box>
                   <Typography variant="body2" color="text.secondary">Return</Typography>
-                  <Typography variant="body1">{formatDate(trip.return_date)}</Typography>
+                  <Typography variant="body1">{formatDateForDisplayLong(trip.return_date)}</Typography>
                 </Box>
               </Box>
 

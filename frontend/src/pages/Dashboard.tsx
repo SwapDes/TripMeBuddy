@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { formatDateForDisplay } from '../utils/dateUtils';
 import {
   Container,
   Typography,
@@ -92,15 +93,6 @@ const Dashboard: React.FC = () => {
       console.error('Error parsing preferences:', err);
     }
     return { hasFallback: false };
-  };
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
   };
 
   const getStatusColor = (status: string) => {
@@ -223,8 +215,8 @@ const Dashboard: React.FC = () => {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <CalendarMonth fontSize="small" color="action" />
                       <Typography variant="body2">
-                        {formatDate(trip.departure_date)}
-                        {trip.return_date && ` - ${formatDate(trip.return_date)}`}
+                        {formatDateForDisplay(trip.departure_date)}
+                        {trip.return_date && ` - ${formatDateForDisplay(trip.return_date)}`}
                       </Typography>
                     </Box>
 
