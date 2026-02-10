@@ -33,12 +33,16 @@ class Settings(BaseSettings):
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
-    # Keycloak Configuration
+    # Keycloak Configuration (Frontend Client)
     KEYCLOAK_SERVER_URL: str
     KEYCLOAK_REALM: str = "tripmebuddy"
     KEYCLOAK_CLIENT_ID: str = "trip-me-buddy-frontend"
     KEYCLOAK_CLIENT_SECRET: str = ""  # Not needed for public client validation
     ALGORITHM: str = "RS256"
+
+    # Keycloak Backend Client (for user management operations)
+    KEYCLOAK_BACKEND_CLIENT_ID: str = "trip-me-buddy-backend"
+    KEYCLOAK_BACKEND_CLIENT_SECRET: str = ""  # Load from environment
 
     @property
     def KEYCLOAK_CERTS_URL(self) -> str:

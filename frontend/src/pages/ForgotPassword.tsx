@@ -41,11 +41,10 @@ const ForgotPassword: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      console.log('Password reset requested for:', data.email);
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 800));
       setSuccess(true);
     } catch (err: any) {
-      setError(err.message || 'Failed to send reset email. Please try again.');
+      setError(err.message || 'An error occurred. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -77,7 +76,7 @@ const ForgotPassword: React.FC = () => {
               Forgot Password?
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              No worries! Enter your email and we'll send you reset instructions.
+              We'll help you reset your password.
             </Typography>
           </Box>
 
@@ -88,31 +87,24 @@ const ForgotPassword: React.FC = () => {
           )}
 
           {success ? (
-            <Alert severity="success" sx={{ mb: 3 }} icon={<Email />}>
+            <Alert severity="info" sx={{ mb: 3 }} icon={<Email />}>
               <Typography variant="body2" gutterBottom>
-                <strong>Check Your Email</strong>
+                <strong>Password Reset Request Received</strong>
               </Typography>
               <Typography variant="body2" sx={{ mb: 2 }}>
-                If an account exists with this email, you'll receive password reset instructions shortly.
+                Password reset is currently handled manually. Please contact{' '}
+                <strong>support@tripmebuddy.com</strong> with your registered email address and we'll help you reset your password within 24 hours.
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Didn't receive an email? Check your spam folder or{' '}
-                <Link
-                  component="button"
-                  variant="body2"
-                  onClick={() => setSuccess(false)}
-                  underline="hover"
-                >
-                  try again
-                </Link>
-                .
+                Email verification and automated password reset will be available in a future update.
               </Typography>
             </Alert>
           ) : (
             <Box component="form" onSubmit={handleSubmit(onSubmit)}>
               <Alert severity="info" sx={{ mb: 3 }}>
                 <Typography variant="body2">
-                  <strong>Beta Notice:</strong> Password reset requests are handled manually. Please contact support@tripmebuddy.com if you need immediate assistance.
+                  <strong>Manual Password Reset:</strong> Enter your email below and click submit. 
+                  You'll receive instructions on how to contact our support team to reset your password.
                 </Typography>
               </Alert>
 
@@ -140,10 +132,10 @@ const ForgotPassword: React.FC = () => {
                 {isSubmitting ? (
                   <>
                     <CircularProgress size={24} sx={{ mr: 1 }} color="inherit" />
-                    Sending...
+                    Processing...
                   </>
                 ) : (
-                  'Send Reset Link'
+                  'Request Password Reset'
                 )}
               </Button>
 

@@ -3,7 +3,7 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import users, travel, trips, jobs
+from app.api.routes import users, travel, trips, jobs, auth
 
 # Configure logging BEFORE creating the app
 logging.basicConfig(
@@ -80,6 +80,7 @@ app.include_router(users.router, prefix="/api/v1", tags=["users"])
 app.include_router(travel.router, prefix="/api/v1")
 app.include_router(trips.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 
 @app.get("/")
 async def root():

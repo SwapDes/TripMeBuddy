@@ -15,6 +15,7 @@ import {
   Link,
 } from '@mui/material';
 import { ArrowBack } from '@mui/icons-material';
+import apiClient from '../services/apiClient';
 
 const signupSchema = z.object({
   fullName: z.string().min(2, 'Full name must be at least 2 characters'),
@@ -53,15 +54,35 @@ const SignUp: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      console.log('Sign up data:', data);
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setSuccess(true);
-      reset();
-      setTimeout(() => {
-        navigate('/login');
-      }, 3000);
+      const response = await apiClient.post('/auth/register', {
+        full_name: data.fullName,
+        email: data.email,
+        password: data.password,
+      });
+
+      if (response.data.success) {
+        setSuccess(true);
+        reset();
+        
+        setTimeout(() => {
+          navigate('/login');
+        }, 3000);
+      }
     } catch (err: any) {
-      setError(err.message || 'Registration failed. Please try again.');
+      if (err.response?.status === 409) {
+        setError('An account with this email already exists. Please login or use a different email.');
+      } else if (err.response?.data?.detail) {
+        if (typeof err.response.data.detail === 'string') {
+          setError(err.response.data.detail);
+        } else if (Array.isArray(err.response.data.detail)) {
+          const messages = err.response.data.detail.map((d: any) => d.msg || d.message).join(', ');
+          setError(messages);
+        } else {
+          setError('Registration failed. Please try again.');
+        }
+      } else {
+        setError('Registration failed. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -97,12 +118,6 @@ const SignUp: React.FC = () => {
             </Typography>
           </Box>
 
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body2">
-              <strong>Beta Notice:</strong> Thank you for your interest! Account registrations are currently reviewed by our team. You'll receive login credentials via email within 24 hours.
-            </Typography>
-          </Alert>
-
           {error && (
             <Alert severity="error" sx={{ mb: 3 }}>
               {error}
@@ -115,7 +130,7 @@ const SignUp: React.FC = () => {
                 <strong>Registration Successful!</strong>
               </Typography>
               <Typography variant="body2">
-                Thank you for signing up! Check your email for next steps. Redirecting to login...
+                Your account has been created. Redirecting to login...
               </Typography>
             </Alert>
           )}
