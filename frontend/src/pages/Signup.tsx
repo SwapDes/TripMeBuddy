@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,15 +14,27 @@ import {
   CircularProgress,
   Link,
 } from '@mui/material';
-import { ArrowBack, Email } from '@mui/icons-material';
+import { ArrowBack } from '@mui/icons-material';
+import apiClient from '../services/apiClient';
 
-const forgotPasswordSchema = z.object({
+const signupSchema = z.object({
+  fullName: z.string().min(2, 'Full name must be at least 2 characters'),
   email: z.string().email('Invalid email address'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
 });
 
-type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;
+type SignupFormData = z.infer<typeof signupSchema>;
 
-const ForgotPassword: React.FC = () => {
+const SignUp: React.FC = () => {
+  const navigate = useNavigate();
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,21 +43,46 @@ const ForgotPassword: React.FC = () => {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<ForgotPasswordFormData>({
-    resolver: zodResolver(forgotPasswordSchema),
+    reset,
+  } = useForm<SignupFormData>({
+    resolver: zodResolver(signupSchema),
   });
 
-  const onSubmit = async (data: ForgotPasswordFormData) => {
+  const onSubmit = async (data: SignupFormData) => {
     setError('');
     setSuccess(false);
     setIsSubmitting(true);
 
     try {
-      console.log('Password reset requested for:', data.email);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setSuccess(true);
+      const response = await apiClient.post('/api/v1/auth/register', {
+        full_name: data.fullName,
+        email: data.email,
+        password: data.password,
+      });
+
+      if (response.data.success) {
+        setSuccess(true);
+        reset();
+        
+        setTimeout(() => {
+          navigate('/login');
+        }, 3000);
+      }
     } catch (err: any) {
-      setError(err.message || 'An error occurred. Please try again.');
+      if (err.response?.status === 409) {
+        setError('An account with this email already exists. Please login or use a different email.');
+      } else if (err.response?.data?.detail) {
+        if (typeof err.response.data.detail === 'string') {
+          setError(err.response.data.detail);
+        } else if (Array.isArray(err.response.data.detail)) {
+          const messages = err.response.data.detail.map((d: any) => d.msg || d.message).join(', ');
+          setError(messages);
+        } else {
+          setError('Registration failed. Please try again.');
+        }
+      } else {
+        setError('Registration failed. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -74,10 +111,10 @@ const ForgotPassword: React.FC = () => {
             </Link>
             
             <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
-              Forgot Password?
+              Create Account
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              We'll help you reset your password.
+              Join Trip Me Buddy to start planning AI-powered trips
             </Typography>
           </Box>
 
@@ -87,31 +124,33 @@ const ForgotPassword: React.FC = () => {
             </Alert>
           )}
 
-          {success ? (
-            <Alert severity="info" sx={{ mb: 3 }} icon={<Email />}>
+          {success && (
+            <Alert severity="success" sx={{ mb: 3 }}>
               <Typography variant="body2" gutterBottom>
-                <strong>Password Reset Request Received</strong>
+                <strong>Registration Successful!</strong>
               </Typography>
-              <Typography variant="body2" sx={{ mb: 2 }}>
-                Password reset is currently handled manually. Please contact{' '}
-                <strong>support@tripmebuddy.com</strong> with your registered email address and we'll help you reset your password within 24 hours.
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Email verification and automated password reset will be available in a future update.
+              <Typography variant="body2">
+                Your account has been created. Redirecting to login...
               </Typography>
             </Alert>
-          ) : (
+          )}
+
+          {!success && (
             <Box component="form" onSubmit={handleSubmit(onSubmit)}>
-              <Alert severity="info" sx={{ mb: 3 }}>
-                <Typography variant="body2">
-                  <strong>Manual Password Reset:</strong> Enter your email below and click submit. 
-                  You'll receive instructions on how to contact our support team to reset your password.
-                </Typography>
-              </Alert>
+              <TextField
+                fullWidth
+                label="Full Name"
+                margin="normal"
+                {...register('fullName')}
+                error={!!errors.fullName}
+                helperText={errors.fullName?.message}
+                disabled={isSubmitting}
+                autoComplete="name"
+              />
 
               <TextField
                 fullWidth
-                label="Email Address"
+                label="Email"
                 type="email"
                 margin="normal"
                 {...register('email')}
@@ -119,7 +158,30 @@ const ForgotPassword: React.FC = () => {
                 helperText={errors.email?.message}
                 disabled={isSubmitting}
                 autoComplete="email"
-                autoFocus
+              />
+
+              <TextField
+                fullWidth
+                label="Password"
+                type="password"
+                margin="normal"
+                {...register('password')}
+                error={!!errors.password}
+                helperText={errors.password?.message || "Minimum 8 characters with uppercase, lowercase, and number"}
+                disabled={isSubmitting}
+                autoComplete="new-password"
+              />
+
+              <TextField
+                fullWidth
+                label="Confirm Password"
+                type="password"
+                margin="normal"
+                {...register('confirmPassword')}
+                error={!!errors.confirmPassword}
+                helperText={errors.confirmPassword?.message}
+                disabled={isSubmitting}
+                autoComplete="new-password"
               />
 
               <Button
@@ -133,16 +195,16 @@ const ForgotPassword: React.FC = () => {
                 {isSubmitting ? (
                   <>
                     <CircularProgress size={24} sx={{ mr: 1 }} color="inherit" />
-                    Processing...
+                    Creating Account...
                   </>
                 ) : (
-                  'Request Password Reset'
+                  'Sign Up'
                 )}
               </Button>
 
               <Box sx={{ textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  Remember your password?{' '}
+                  Already have an account?{' '}
                   <Link component={RouterLink} to="/login" underline="hover">
                     Login
                   </Link>
@@ -151,12 +213,9 @@ const ForgotPassword: React.FC = () => {
             </Box>
           )}
 
-          <Box sx={{ mt: 3, textAlign: 'center', p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+          <Box sx={{ mt: 3, textAlign: 'center' }}>
             <Typography variant="caption" color="text.secondary">
-              <strong>Need Help?</strong>
-            </Typography>
-            <Typography variant="caption" color="text.secondary" display="block">
-              Contact support@tripmebuddy.com for assistance
+              By signing up, you agree to our Terms of Service and Privacy Policy
             </Typography>
           </Box>
         </Paper>
@@ -165,5 +224,5 @@ const ForgotPassword: React.FC = () => {
   );
 };
 
-const ForgotPasswordPage = ForgotPassword;
-export default ForgotPasswordPage;
+const SignUpPage = SignUp;
+export default SignUpPage;
