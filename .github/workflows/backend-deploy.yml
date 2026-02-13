@@ -10,9 +10,10 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: trip-me-buddy-backend
+  ECR_REPOSITORY: tripmebuddy-backend
   ECS_CLUSTER: trip-me-buddy-cluster
   ECS_SERVICE: trip-me-buddy-backend-service
+  TASK_FAMILY: trip-me-buddy-backend-task
 
 jobs:
   deploy:
@@ -47,9 +48,149 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Force ECS service deployment
+      - name: Get secrets from Parameter Store
+        id: get-secrets
+        run: |
+          echo "db_password=$(aws ssm get-parameter --name /tripmebuddy/database/password --with-decryption --query Parameter.Value --output text)" >> $GITHUB_OUTPUT
+          echo "redis_password=$(aws ssm get-parameter --name /tripmebuddy/redis/password --with-decryption --query Parameter.Value --output text)" >> $GITHUB_OUTPUT
+          echo "amadeus_key=$(aws ssm get-parameter --name /tripmebuddy/amadeus/api-key --with-decryption --query Parameter.Value --output text)" >> $GITHUB_OUTPUT
+          echo "amadeus_secret=$(aws ssm get-parameter --name /tripmebuddy/amadeus/api-secret --with-decryption --query Parameter.Value --output text)" >> $GITHUB_OUTPUT
+          echo "gemini_key=$(aws ssm get-parameter --name /tripmebuddy/gemini/api-key --with-decryption --query Parameter.Value --output text)" >> $GITHUB_OUTPUT
+
+      - name: Create task definition JSON
+        run: |
+          cat > task-definition.json <<EOF
+          {
+            "family": "${{ env.TASK_FAMILY }}",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "512",
+            "memory": "1024",
+            "executionRoleArn": "arn:aws:iam::594585418788:role/ecsTaskExecutionRole",
+            "taskRoleArn": "arn:aws:iam::594585418788:role/ecsTaskRole",
+            "containerDefinitions": [
+              {
+                "name": "backend",
+                "image": "${{ steps.build-image.outputs.image }}",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 8000,
+                    "protocol": "tcp"
+                  }
+                ],
+                "environment": [
+                  {
+                    "name": "DB_HOST",
+                    "value": "trip-me-buddy-postgres.ckjwwyiy4cm4.us-east-1.rds.amazonaws.com"
+                  },
+                  {
+                    "name": "DB_PORT",
+                    "value": "5432"
+                  },
+                  {
+                    "name": "DB_NAME",
+                    "value": "tripmebbuddy_v2"
+                  },
+                  {
+                    "name": "DB_USER",
+                    "value": "postgres"
+                  },
+                  {
+                    "name": "DB_PASSWORD",
+                    "value": "${{ steps.get-secrets.outputs.db_password }}"
+                  },
+                  {
+                    "name": "REDIS_HOST",
+                    "value": "trip-me-buddy-redis.qmxr2e.0001.use1.cache.amazonaws.com"
+                  },
+                  {
+                    "name": "REDIS_PORT",
+                    "value": "6379"
+                  },
+                  {
+                    "name": "REDIS_DB",
+                    "value": "0"
+                  },
+                  {
+                    "name": "REDIS_PASSWORD",
+                    "value": "${{ steps.get-secrets.outputs.redis_password }}"
+                  },
+                  {
+                    "name": "KEYCLOAK_SERVER_URL",
+                    "value": "http://trip-me-buddy-alb-990405631.us-east-1.elb.amazonaws.com"
+                  },
+                  {
+                    "name": "KEYCLOAK_REALM",
+                    "value": "tripmebuddy"
+                  },
+                  {
+                    "name": "KEYCLOAK_CLIENT_ID",
+                    "value": "trip-me-buddy-frontend"
+                  },
+                  {
+                    "name": "KEYCLOAK_BACKEND_CLIENT_ID",
+                    "value": "trip-me-buddy-backend"
+                  },
+                  {
+                    "name": "KEYCLOAK_BACKEND_CLIENT_SECRET",
+                    "value": "${{ secrets.KEYCLOAK_BACKEND_CLIENT_SECRET }}"
+                  },
+                  {
+                    "name": "ALGORITHM",
+                    "value": "RS256"
+                  },
+                  {
+                    "name": "AMADEUS_API_KEY",
+                    "value": "${{ steps.get-secrets.outputs.amadeus_key }}"
+                  },
+                  {
+                    "name": "AMADEUS_API_SECRET",
+                    "value": "${{ steps.get-secrets.outputs.amadeus_secret }}"
+                  },
+                  {
+                    "name": "GEMINI_API_KEY",
+                    "value": "${{ steps.get-secrets.outputs.gemini_key }}"
+                  },
+                  {
+                    "name": "DEBUG",
+                    "value": "False"
+                  },
+                  {
+                    "name": "BACKEND_CORS_ORIGINS",
+                    "value": "[\"http://localhost:5173\",\"http://localhost:3000\",\"https://tripmebuddy.senseddreams.com\",\"https://senseddreams.com\"]"
+                  }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/trip-me-buddy",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "backend"
+                  }
+                },
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+                  "interval": 30,
+                  "timeout": 5,
+                  "retries": 3,
+                  "startPeriod": 60
+                }
+              }
+            ]
+          }
+          EOF
+
+      - name: Register new task definition
+        id: register-task-def
+        run: |
+          TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "task_def_arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      - name: Update ECS service with new task definition
         run: |
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.register-task-def.outputs.task_def_arn }} \
             --force-new-deployment
