@@ -111,10 +111,16 @@ async def register_user(
             )
         
         # Create user in database
+        name_parts = request.full_name.split(' ', 1)
+        first_name = name_parts[0]
+        last_name = name_parts[1] if len(name_parts) > 1 else ""
+
         db_user = User(
-            keycloak_id=keycloak_user_id,
+            id=keycloak_user_id,
             email=request.email.lower(),
-            full_name=request.full_name
+            username=request.email.lower().split('@')[0],
+            first_name=first_name,
+            last_name=last_name
         )
         db.add(db_user)
         await db.commit()
@@ -123,7 +129,7 @@ async def register_user(
         return RegisterResponse(
             success=True,
             message="Registration successful! You can now login.",
-            user_id=db_user.user_id,
+            user_id=db_user.id,
             email=db_user.email
         )
         
