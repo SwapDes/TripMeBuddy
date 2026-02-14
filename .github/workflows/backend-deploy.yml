@@ -10,7 +10,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: tripmebuddy-backend
+  ECR_REPOSITORY: trip-me-buddy-backend
   ECS_CLUSTER: trip-me-buddy-cluster
   ECS_SERVICE: trip-me-buddy-backend-service
   TASK_FAMILY: trip-me-buddy-backend-task
@@ -48,15 +48,6 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Get secrets from Parameter Store
-        id: get-secrets
-        run: |
-          echo "db_password=$(aws ssm get-parameter --name /tripmebuddy/database/password --with-decryption --query Parameter.Value --output text)" >> $GITHUB_OUTPUT
-          echo "redis_password=$(aws ssm get-parameter --name /tripmebuddy/redis/password --with-decryption --query Parameter.Value --output text)" >> $GITHUB_OUTPUT
-          echo "amadeus_key=$(aws ssm get-parameter --name /tripmebuddy/amadeus/api-key --with-decryption --query Parameter.Value --output text)" >> $GITHUB_OUTPUT
-          echo "amadeus_secret=$(aws ssm get-parameter --name /tripmebuddy/amadeus/api-secret --with-decryption --query Parameter.Value --output text)" >> $GITHUB_OUTPUT
-          echo "gemini_key=$(aws ssm get-parameter --name /tripmebuddy/gemini/api-key --with-decryption --query Parameter.Value --output text)" >> $GITHUB_OUTPUT
-
       - name: Create task definition JSON
         run: |
           cat > task-definition.json <<EOF
@@ -66,7 +57,7 @@ jobs:
             "requiresCompatibilities": ["FARGATE"],
             "cpu": "512",
             "memory": "1024",
-            "executionRoleArn": "arn:aws:iam::594585418788:role/ecsTaskExecutionRole",
+            "executionRoleArn": "arn:aws:iam::594585418788:role/trip-me-buddy-ecs-task-execution-role",
             "containerDefinitions": [
               {
                 "name": "backend",
@@ -92,14 +83,6 @@ jobs:
                     "value": "tripmebbuddy_v2"
                   },
                   {
-                    "name": "DB_USER",
-                    "value": "postgres"
-                  },
-                  {
-                    "name": "DB_PASSWORD",
-                    "value": "${{ steps.get-secrets.outputs.db_password }}"
-                  },
-                  {
                     "name": "REDIS_HOST",
                     "value": "trip-me-buddy-redis.qmxr2e.0001.use1.cache.amazonaws.com"
                   },
@@ -113,7 +96,7 @@ jobs:
                   },
                   {
                     "name": "REDIS_PASSWORD",
-                    "value": "${{ steps.get-secrets.outputs.redis_password }}"
+                    "value": ""
                   },
                   {
                     "name": "KEYCLOAK_SERVER_URL",
@@ -140,24 +123,46 @@ jobs:
                     "value": "RS256"
                   },
                   {
-                    "name": "AMADEUS_API_KEY",
-                    "value": "${{ steps.get-secrets.outputs.amadeus_key }}"
-                  },
-                  {
-                    "name": "AMADEUS_API_SECRET",
-                    "value": "${{ steps.get-secrets.outputs.amadeus_secret }}"
-                  },
-                  {
-                    "name": "GEMINI_API_KEY",
-                    "value": "${{ steps.get-secrets.outputs.gemini_key }}"
-                  },
-                  {
                     "name": "DEBUG",
                     "value": "False"
                   },
                   {
+                    "name": "PROJECT_NAME",
+                    "value": "Trip Me Buddy API"
+                  },
+                  {
+                    "name": "VERSION",
+                    "value": "1.0.0"
+                  },
+                  {
                     "name": "BACKEND_CORS_ORIGINS",
                     "value": "[\"http://localhost:5173\",\"http://localhost:3000\",\"https://tripmebuddy.senseddreams.com\",\"https://senseddreams.com\"]"
+                  }
+                ],
+                "secrets": [
+                  {
+                    "name": "AMADEUS_API_KEY",
+                    "valueFrom": "arn:aws:ssm:us-east-1:594585418788:parameter/trip-me-buddy/amadeus-api-key"
+                  },
+                  {
+                    "name": "AMADEUS_API_SECRET",
+                    "valueFrom": "arn:aws:ssm:us-east-1:594585418788:parameter/trip-me-buddy/amadeus-api-secret"
+                  },
+                  {
+                    "name": "DB_PASSWORD",
+                    "valueFrom": "arn:aws:ssm:us-east-1:594585418788:parameter/trip-me-buddy/db-password"
+                  },
+                  {
+                    "name": "DB_USER",
+                    "valueFrom": "arn:aws:ssm:us-east-1:594585418788:parameter/trip-me-buddy/db-user"
+                  },
+                  {
+                    "name": "GEMINI_API_KEY",
+                    "valueFrom": "arn:aws:ssm:us-east-1:594585418788:parameter/trip-me-buddy/gemini-api-key"
+                  },
+                  {
+                    "name": "KEYCLOAK_CLIENT_SECRET",
+                    "valueFrom": "arn:aws:ssm:us-east-1:594585418788:parameter/trip-me-buddy/keycloak-client-secret"
                   }
                 ],
                 "logConfiguration": {
