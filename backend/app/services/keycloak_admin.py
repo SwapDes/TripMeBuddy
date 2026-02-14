@@ -104,6 +104,7 @@ class KeycloakAdmin:
                 "lastName": last_name,
                 "enabled": True,
                 "emailVerified": email_verified,
+                "requiredActions": [],
                 "credentials": [{
                     "type": "password",
                     "value": password,
