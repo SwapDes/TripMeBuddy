@@ -67,7 +67,6 @@ jobs:
             "cpu": "512",
             "memory": "1024",
             "executionRoleArn": "arn:aws:iam::594585418788:role/ecsTaskExecutionRole",
-            "taskRoleArn": "arn:aws:iam::594585418788:role/ecsTaskRole",
             "containerDefinitions": [
               {
                 "name": "backend",
