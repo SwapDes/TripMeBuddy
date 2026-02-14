@@ -105,7 +105,7 @@ const theme = createTheme({
     },
     button: {
       fontWeight: 600,
-      textTransform: 'none', // Keep button text as-is (not all caps)
+      textTransform: 'none',
       fontSize: '0.875rem',
     },
   },
@@ -119,7 +119,6 @@ const theme = createTheme({
     '0px 8px 16px rgba(9, 111, 206, 0.16)',
     '0px 12px 24px rgba(9, 111, 206, 0.2)',
     '0px 16px 32px rgba(9, 111, 206, 0.24)',
-    // ... (MUI requires 25 shadow levels, keeping defaults for the rest)
     '0px 2px 1px -1px rgba(0,0,0,0.2),0px 1px 1px 0px rgba(0,0,0,0.14),0px 1px 3px 0px rgba(0,0,0,0.12)',
     '0px 3px 1px -2px rgba(0,0,0,0.2),0px 2px 2px 0px rgba(0,0,0,0.14),0px 1px 5px 0px rgba(0,0,0,0.12)',
     '0px 3px 3px -2px rgba(0,0,0,0.2),0px 3px 4px 0px rgba(0,0,0,0.14),0px 1px 8px 0px rgba(0,0,0,0.12)',
@@ -141,65 +140,18 @@ const theme = createTheme({
     '0px 9px 12px -6px rgba(0,0,0,0.2),0px 19px 29px 2px rgba(0,0,0,0.14),0px 7px 36px 6px rgba(0,0,0,0.12)',
   ],
   components: {
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          borderRadius: 0,
+        },
+      },
+    },
     MuiButton: {
       styleOverrides: {
         root: {
           borderRadius: 8,
           padding: '8px 16px',
-          fontWeight: 600,
-        },
-        contained: {
-          boxShadow: 'none',
-          '&:hover': {
-            boxShadow: '0px 4px 8px rgba(9, 111, 206, 0.24)',
-          },
-        },
-      },
-    },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          borderRadius: 12,
-          boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.08)',
-        },
-      },
-    },
-    MuiTextField: {
-      styleOverrides: {
-        root: {
-          '& .MuiOutlinedInput-root': {
-            borderRadius: 8,
-          },
-        },
-      },
-    },
-    MuiPaper: {
-      styleOverrides: {
-        root: {
-          borderRadius: 12,
-        },
-        elevation1: {
-          boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-        },
-        elevation2: {
-          boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.12)',
-        },
-        elevation3: {
-          boxShadow: '0px 8px 16px rgba(0, 0, 0, 0.16)',
-        },
-      },
-    },
-    MuiChip: {
-      styleOverrides: {
-        root: {
-          borderRadius: 6,
-        },
-      },
-    },
-    MuiAlert: {
-      styleOverrides: {
-        root: {
-          borderRadius: 8,
         },
       },
     },
