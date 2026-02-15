@@ -203,3 +203,9 @@ id_rsa.pub
 # Local utility scripts
 *_local.*
 error_logs.txt
+
+# Task definitions and temp files with secrets
+task-def-new.json
+current-env.json
+full-container.json
+fix-keycloak-config.ps1
