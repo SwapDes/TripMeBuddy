@@ -16,6 +16,8 @@ import {
   Divider,
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import TermsOfServiceModal from '../components/TermsOfServiceModal';
+import PrivacyPolicyModal from '../components/PrivacyPolicyModal';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -29,6 +31,10 @@ const Login: React.FC = () => {
   const { login } = useAuth();
   const [error, setError] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Modal states
+  const [termsOpen, setTermsOpen] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
 
   const {
     register,
@@ -50,6 +56,17 @@ const Login: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Modal click handlers
+  const handleTermsClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setTermsOpen(true);
+  };
+
+  const handlePrivacyClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setPrivacyOpen(true);
   };
 
   return (
@@ -159,13 +176,49 @@ const Login: React.FC = () => {
             </Box>
           </Box>
 
+          {/* Updated Terms and Privacy section with clickable links */}
           <Box sx={{ mt: 3, textAlign: 'center' }}>
             <Typography variant="caption" color="text.secondary">
-              By logging in, you agree to our Terms of Service and Privacy Policy
+              By logging in, you agree to our{' '}
+              <Link
+                component="button"
+                variant="caption"
+                onClick={handleTermsClick}
+                sx={{ 
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  color: 'text.secondary',
+                  '&:hover': {
+                    color: 'primary.main',
+                  }
+                }}
+              >
+                Terms of Service
+              </Link>
+              {' '}and{' '}
+              <Link
+                component="button"
+                variant="caption"
+                onClick={handlePrivacyClick}
+                sx={{ 
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  color: 'text.secondary',
+                  '&:hover': {
+                    color: 'primary.main',
+                  }
+                }}
+              >
+                Privacy Policy
+              </Link>
             </Typography>
           </Box>
         </Paper>
       </Container>
+
+      {/* Modals */}
+      <TermsOfServiceModal open={termsOpen} onClose={() => setTermsOpen(false)} />
+      <PrivacyPolicyModal open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
     </Box>
   );
 };
