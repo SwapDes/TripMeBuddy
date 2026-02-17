@@ -59,19 +59,16 @@ const TripDetailPage: React.FC = () => {
   const [replanProgressOpen, setReplanProgressOpen] = useState(false);
   const [replanJobId, setReplanJobId] = useState<string>('');
 
-
   console.log('TripDetail mounted, id:', id);
 
   useEffect(() => {
     console.log('useEffect triggered, id:', id);
-    
     if (!id) {
       console.log('No id provided');
       setError('Trip ID not found in URL');
       setLoading(false);
       return;
     }
-    
     loadTrip();
   }, [id]);
 
@@ -82,7 +79,6 @@ const TripDetailPage: React.FC = () => {
       setLoading(false);
       return;
     }
-    
     try {
       setLoading(true);
       setError('');
@@ -100,7 +96,6 @@ const TripDetailPage: React.FC = () => {
 
   const handleToggleFavorite = async () => {
     if (!trip) return;
-    
     try {
       await tripService.toggleFavorite(trip.id, !trip.is_favorite);
       setTrip({ ...trip, is_favorite: !trip.is_favorite });
@@ -111,7 +106,6 @@ const TripDetailPage: React.FC = () => {
 
   const handleDelete = async () => {
     if (!trip || !window.confirm('Are you sure you want to delete this trip?')) return;
-    
     try {
       await tripService.deleteTrip(trip.id);
       navigate('/dashboard');
@@ -120,13 +114,13 @@ const TripDetailPage: React.FC = () => {
       setError('Failed to delete trip. Please try again.');
     }
   };
+
   const handleEditClick = () => {
     setEditModalOpen(true);
   };
 
   const handleReplan = async (request: TripReplanRequest) => {
     if (!trip) return;
-    
     try {
       setEditModalOpen(false);
       const response = await tripService.replanTrip(trip.id, request);
@@ -149,39 +143,27 @@ const TripDetailPage: React.FC = () => {
     setReplanProgressOpen(false);
   };
 
-
   const getFallbackInfo = () => {
     if (!trip) return null;
-    
     try {
       const preferences = typeof trip.preferences === 'string'
         ? JSON.parse(trip.preferences)
         : trip.preferences;
-      
       const requestedDestination = preferences?.destination_preferences?.[0];
-      
       if (requestedDestination && trip.destination !== requestedDestination) {
-        const tripPlan = typeof trip.trip_plan === 'string' 
-          ? JSON.parse(trip.trip_plan) 
+        const tripPlan = typeof trip.trip_plan === 'string'
+          ? JSON.parse(trip.trip_plan)
           : trip.trip_plan;
-        
-        const destinationInfo = tripPlan?.trip_plan?.trip_plan?.destination_info || 
+        const destinationInfo = tripPlan?.trip_plan?.trip_plan?.destination_info ||
                                tripPlan?.trip_plan?.destination_info ||
                                tripPlan?.destination_info;
-        
-        const reasoning = destinationInfo?.description || 
+        const reasoning = destinationInfo?.description ||
                          `We selected ${trip.destination} as an alternative to provide you with the best travel experience.`;
-        
-        return {
-          requested: requestedDestination,
-          selected: trip.destination,
-          reasoning: reasoning
-        };
+        return { requested: requestedDestination, selected: trip.destination, reasoning };
       }
     } catch (err) {
       console.error('Error checking fallback:', err);
     }
-    
     return null;
   };
 
@@ -228,86 +210,127 @@ const TripDetailPage: React.FC = () => {
 
   const tripPlan = typeof trip.trip_plan === 'string' ? JSON.parse(trip.trip_plan) : trip.trip_plan;
   const actualPlan = tripPlan?.trip_plan?.trip_plan || tripPlan?.trip_plan || tripPlan;
-  
+
   console.log('Full actualPlan:', actualPlan);
-  
+
   const destinationInfo = actualPlan?.destination_info || {};
   const transportation = actualPlan?.transportation || {};
   const accommodation = actualPlan?.accommodation || {};
-  
+
   console.log('Transportation object:', transportation);
   console.log('Accommodation object:', accommodation);
-  
+
   const outboundFlight = transportation?.outbound_flight;
   const returnFlight = transportation?.return_flight;
   const flightAlternatives = transportation?.flight_alternatives || [];
-  
+
   const hotelsData = tripPlan?.hotels || {};
   const hotelsList = hotelsData?.hotels || [];
-  
+
   console.log('=== HOTEL DATA EXTRACTION ===');
   console.log('tripPlan.hotels:', tripPlan?.hotels);
   console.log('hotelsList from new format:', hotelsList);
-  
+
   const recommendedHotel = accommodation?.recommended_hotel;
   const oldFormatAlternatives = accommodation?.hotel_alternatives || [];
-  
+
   console.log('accommodation.recommended_hotel:', recommendedHotel);
   console.log('accommodation.hotel_alternatives:', oldFormatAlternatives);
-  
+
   const hotelAlternatives = oldFormatAlternatives.length > 0 ? oldFormatAlternatives : hotelsList;
-  
+
   console.log('Final hotelAlternatives (using ' + (oldFormatAlternatives.length > 0 ? 'old' : 'new') + ' format):', hotelAlternatives);
   console.log('============================');
-  
+
   console.log('Hotels data (new format):', hotelsData);
   console.log('Hotel alternatives:', hotelAlternatives);
-  
+
   const dailyItinerary = actualPlan?.daily_itinerary || [];
   const planningNotes = actualPlan?.planning_notes || {};
   const budgetBreakdown = actualPlan?.budget_breakdown || {};
-  
+
   console.log('Budget breakdown object:', budgetBreakdown);
-  
-  const preferences = typeof trip.preferences === 'string' 
-    ? JSON.parse(trip.preferences) 
+
+  const preferences = typeof trip.preferences === 'string'
+    ? JSON.parse(trip.preferences)
     : trip.preferences;
 
   const fallbackInfo = getFallbackInfo();
 
+  // Reusable style: hotel/flight price box — stacks below name on mobile
+  const priceBoxSx = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: { xs: 'flex-start', md: 'flex-end' },
+    flexShrink: 0,
+    minWidth: 0,
+    maxWidth: { xs: '100%', md: 'auto' },
+    mt: { xs: 1, md: 0 },
+    ml: { xs: 0, md: 2 },
+  };
+
+  // Reusable style: card inner row — stacks on mobile
+  const cardRowSx = {
+    display: 'flex',
+    flexDirection: { xs: 'column', md: 'row' },
+    justifyContent: 'space-between',
+    alignItems: { xs: 'flex-start', md: 'start' },
+    width: '100%',
+  };
+
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ mt: 4, mb: 4 }}>
-        {/* FIX 1: Header row — wraps on mobile so Edit/Delete don't overflow right */}
-        <Box sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'start',
-          mb: 3,
-          flexWrap: 'wrap',
-          gap: 1,
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}>
-            <Button startIcon={<ArrowBack />} onClick={() => navigate('/dashboard')} sx={{ flexShrink: 0 }}>
+    <Container maxWidth="lg" sx={{ px: { xs: 1.5, sm: 3 } }}>
+      <Box sx={{ mt: 3, mb: 4 }}>
+
+        {/* ── HEADER: Back / Title / Star on row 1, Edit+Delete on row 2 on mobile ── */}
+        <Box sx={{ mb: 3 }}>
+          {/* Row 1: Back button + trip name + favourite star */}
+          <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            mb: 1,
+            minWidth: 0,
+          }}>
+            <Button
+              startIcon={<ArrowBack />}
+              onClick={() => navigate('/dashboard')}
+              size="small"
+              sx={{ flexShrink: 0 }}
+            >
               Back
             </Button>
             <Typography
-              variant="h4"
+              variant="h5"
               component="h1"
               fontWeight="bold"
-              sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: { xs: 'normal', md: 'nowrap' },
+                wordBreak: 'break-word',
+                fontSize: { xs: '1.1rem', sm: '1.4rem', md: '1.75rem' },
+              }}
             >
               {trip.trip_name}
             </Typography>
-            <IconButton onClick={handleToggleFavorite} sx={{ flexShrink: 0 }}>
+            <IconButton onClick={handleToggleFavorite} sx={{ flexShrink: 0 }} size="small">
               {trip.is_favorite ? <Star color="warning" /> : <StarBorder />}
             </IconButton>
           </Box>
-          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
-            <Button variant="outlined" startIcon={<Edit />} onClick={handleEditClick}>
+
+          {/* Row 2: Edit + Delete — left-aligned under title on mobile, right on desktop */}
+          <Box sx={{
+            display: 'flex',
+            justifyContent: { xs: 'flex-start', md: 'flex-end' },
+            gap: 1,
+          }}>
+            <Button variant="outlined" startIcon={<Edit />} onClick={handleEditClick} size="small">
               Edit
             </Button>
-            <Button variant="outlined" color="error" startIcon={<Delete />} onClick={handleDelete}>
+            <Button variant="outlined" color="error" startIcon={<Delete />} onClick={handleDelete} size="small">
               Delete
             </Button>
           </Box>
@@ -402,7 +425,7 @@ const TripDetailPage: React.FC = () => {
               <Typography variant="body1" paragraph sx={{ lineHeight: 1.7 }}>
                 {destinationInfo.description}
               </Typography>
-              
+
               {destinationInfo.highlights && destinationInfo.highlights.length > 0 && (
                 <Box sx={{ mt: 3 }}>
                   <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
@@ -473,16 +496,16 @@ const TripDetailPage: React.FC = () => {
                 <Favorite color="primary" />
                 <Typography variant="h6">Your Travel Preferences</Typography>
               </Box>
-              
+
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 3 }}>
                 {preferences.travel_style && (
                   <Box>
                     <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                       Travel Style
                     </Typography>
-                    <Chip 
-                      label={preferences.travel_style.charAt(0).toUpperCase() + preferences.travel_style.slice(1)} 
-                      color="primary" 
+                    <Chip
+                      label={preferences.travel_style.charAt(0).toUpperCase() + preferences.travel_style.slice(1)}
+                      color="primary"
                       variant="outlined"
                     />
                   </Box>
@@ -495,10 +518,10 @@ const TripDetailPage: React.FC = () => {
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       {preferences.interests.map((interest: string, idx: number) => (
-                        <Chip 
+                        <Chip
                           key={idx}
                           icon={getInterestIcon(interest)}
-                          label={interest.charAt(0).toUpperCase() + interest.slice(1)} 
+                          label={interest.charAt(0).toUpperCase() + interest.slice(1)}
                           size="small"
                           variant="outlined"
                         />
@@ -514,9 +537,9 @@ const TripDetailPage: React.FC = () => {
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       {preferences.special_requirements.map((req: string, idx: number) => (
-                        <Chip 
+                        <Chip
                           key={idx}
-                          label={req.charAt(0).toUpperCase() + req.slice(1)} 
+                          label={req.charAt(0).toUpperCase() + req.slice(1)}
                           size="small"
                           color="warning"
                           variant="outlined"
@@ -537,70 +560,58 @@ const TripDetailPage: React.FC = () => {
                 <AccountBalanceWallet color="primary" />
                 <Typography variant="h6">Budget Breakdown</Typography>
               </Box>
-              
+
               {(() => {
                 console.log('Budget currency:', budgetBreakdown.currency);
                 console.log('Trip currency:', trip.currency);
                 console.log('Trip budget:', trip.budget);
                 console.log('Breakdown total:', budgetBreakdown.total_estimated);
-                
+
                 let conversionRate = 1;
                 const shouldConvert = budgetBreakdown.currency !== trip.currency;
-                
+
                 if (shouldConvert && trip.budget && budgetBreakdown.total_estimated) {
                   conversionRate = trip.budget / budgetBreakdown.total_estimated;
                 }
-                
+
                 console.log('Calculated conversion rate:', conversionRate);
                 console.log('Should convert:', shouldConvert);
-                
+
                 return (
                   <>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(2, 1fr)' }, gap: 2 }}>
                       {budgetBreakdown.flights && (
                         <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Flights
-                          </Typography>
-                          <Typography variant="h6">
-                            {shouldConvert ? trip.currency : budgetBreakdown.currency} {
-                              (budgetBreakdown.flights * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })
-                            }
+                          <Typography variant="body2" color="text.secondary">Flights</Typography>
+                          <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                            {shouldConvert ? trip.currency : budgetBreakdown.currency}{' '}
+                            {(budgetBreakdown.flights * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </Typography>
                         </Box>
                       )}
                       {budgetBreakdown.accommodation && (
                         <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Accommodation
-                          </Typography>
-                          <Typography variant="h6">
-                            {shouldConvert ? trip.currency : budgetBreakdown.currency} {
-                              (budgetBreakdown.accommodation * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })
-                            }
+                          <Typography variant="body2" color="text.secondary">Accommodation</Typography>
+                          <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                            {shouldConvert ? trip.currency : budgetBreakdown.currency}{' '}
+                            {(budgetBreakdown.accommodation * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </Typography>
                         </Box>
                       )}
                       {budgetBreakdown.food_and_activities && (
                         <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Food & Activities
-                          </Typography>
-                          <Typography variant="h6">
-                            {shouldConvert ? trip.currency : budgetBreakdown.currency} {
-                              (budgetBreakdown.food_and_activities * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })
-                            }
+                          <Typography variant="body2" color="text.secondary">Food & Activities</Typography>
+                          <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                            {shouldConvert ? trip.currency : budgetBreakdown.currency}{' '}
+                            {(budgetBreakdown.food_and_activities * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </Typography>
                         </Box>
                       )}
                       <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Total Estimated
-                        </Typography>
-                        <Typography variant="h5" color="primary" fontWeight="bold">
-                          {shouldConvert ? trip.currency : budgetBreakdown.currency} {
-                            (budgetBreakdown.total_estimated * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })
-                          }
+                        <Typography variant="body2" color="text.secondary">Total Estimated</Typography>
+                        <Typography variant="h5" color="primary" fontWeight="bold" sx={{ fontSize: { xs: '1.1rem', sm: '1.5rem' } }}>
+                          {shouldConvert ? trip.currency : budgetBreakdown.currency}{' '}
+                          {(budgetBreakdown.total_estimated * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </Typography>
                       </Box>
                     </Box>
@@ -608,7 +619,8 @@ const TripDetailPage: React.FC = () => {
                     {shouldConvert && (
                       <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
                         <Typography variant="caption" color="text.secondary">
-                          Original amounts in {budgetBreakdown.currency}: {budgetBreakdown.currency} {budgetBreakdown.total_estimated.toLocaleString()}
+                          Original amounts in {budgetBreakdown.currency}: {budgetBreakdown.currency}{' '}
+                          {budgetBreakdown.total_estimated.toLocaleString()}
                         </Typography>
                       </Box>
                     )}
@@ -619,6 +631,7 @@ const TripDetailPage: React.FC = () => {
           </Card>
         )}
 
+        {/* ── FLIGHTS ── */}
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -637,7 +650,7 @@ const TripDetailPage: React.FC = () => {
                       Recommended Outbound Flight
                     </Typography>
                     <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'primary.50' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                      <Box sx={cardRowSx}>
                         <Box>
                           <Typography variant="body1" fontWeight="bold">
                             {outboundFlight.details?.itineraries?.[0]?.segments?.[0]?.carrierCode || 'Airline'}
@@ -649,15 +662,14 @@ const TripDetailPage: React.FC = () => {
                             Segments: {outboundFlight.segments || 'N/A'}
                           </Typography>
                         </Box>
-                        <Box sx={{ textAlign: 'right' }}>
-                          <Typography variant="h6" color="primary">
+                        <Box sx={priceBoxSx}>
+                          <Typography variant="h6" color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                             {outboundFlight.price}
                           </Typography>
                           {outboundFlight.details?.price?.converted && (
                             <Typography variant="caption" color="text.secondary">
-                              ≈ {outboundFlight.details.price.converted.currency} {
-                                parseFloat(outboundFlight.details.price.converted.amount || 0).toLocaleString()
-                              }
+                              ≈ {outboundFlight.details.price.converted.currency}{' '}
+                              {parseFloat(outboundFlight.details.price.converted.amount || 0).toLocaleString()}
                             </Typography>
                           )}
                         </Box>
@@ -672,7 +684,7 @@ const TripDetailPage: React.FC = () => {
                       Return Flight
                     </Typography>
                     <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'success.50' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                      <Box sx={cardRowSx}>
                         <Box>
                           <Typography variant="body1" fontWeight="bold">
                             {returnFlight.details?.itineraries?.[1]?.segments?.[0]?.carrierCode || 'Airline'}
@@ -684,15 +696,14 @@ const TripDetailPage: React.FC = () => {
                             Segments: {returnFlight.segments || 'N/A'}
                           </Typography>
                         </Box>
-                        <Box sx={{ textAlign: 'right' }}>
-                          <Typography variant="h6" color="success.main">
+                        <Box sx={priceBoxSx}>
+                          <Typography variant="h6" color="success.main" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                             {returnFlight.price}
                           </Typography>
                           {returnFlight.details?.price?.converted && (
                             <Typography variant="caption" color="text.secondary">
-                              ≈ {returnFlight.details.price.converted.currency} {
-                                parseFloat(returnFlight.details.price.converted.amount || 0).toLocaleString()
-                              }
+                              ≈ {returnFlight.details.price.converted.currency}{' '}
+                              {parseFloat(returnFlight.details.price.converted.amount || 0).toLocaleString()}
                             </Typography>
                           )}
                         </Box>
@@ -712,35 +723,35 @@ const TripDetailPage: React.FC = () => {
                         const itinerary = flightOffer.details?.itineraries?.[0];
                         const segment = itinerary?.segments?.[0];
                         const price = flightOffer.details?.price;
-                      
-                      return (
-                        <Paper key={idx} variant="outlined" sx={{ p: 2, mb: 2 }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                            <Box>
-                              <Typography variant="body1" fontWeight="bold">
-                                {segment?.carrierCode || 'Airline'} {segment?.number || ''}
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {segment?.departure?.iataCode} → {segment?.arrival?.iataCode}
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                Duration: {flightOffer.duration || 'N/A'} | Segments: {flightOffer.segments || 0}
-                              </Typography>
-                            </Box>
-                            <Box sx={{ textAlign: 'right' }}>
-                              <Typography variant="h6" color="primary">
-                                {flightOffer.price}
-                              </Typography>
-                              {price?.converted && (
-                                <Typography variant="caption" color="text.secondary">
-                                  ≈ {price.converted.currency} {parseFloat(price.converted.amount || 0).toLocaleString()}
+                        return (
+                          <Paper key={idx} variant="outlined" sx={{ p: 2, mb: 2 }}>
+                            <Box sx={cardRowSx}>
+                              <Box>
+                                <Typography variant="body1" fontWeight="bold">
+                                  {segment?.carrierCode || 'Airline'} {segment?.number || ''}
                                 </Typography>
-                              )}
+                                <Typography variant="body2" color="text.secondary">
+                                  {segment?.departure?.iataCode} → {segment?.arrival?.iataCode}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Duration: {flightOffer.duration || 'N/A'} | Segments: {flightOffer.segments || 0}
+                                </Typography>
+                              </Box>
+                              <Box sx={priceBoxSx}>
+                                <Typography variant="h6" color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                                  {flightOffer.price}
+                                </Typography>
+                                {price?.converted && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    ≈ {price.converted.currency}{' '}
+                                    {parseFloat(price.converted.amount || 0).toLocaleString()}
+                                  </Typography>
+                                )}
+                              </Box>
                             </Box>
-                          </Box>
-                        </Paper>
-                      );
-                    })}
+                          </Paper>
+                        );
+                      })}
                   </>
                 )}
               </>
@@ -748,6 +759,7 @@ const TripDetailPage: React.FC = () => {
           </CardContent>
         </Card>
 
+        {/* ── HOTELS ── */}
         {(() => {
           const validHotels = hotelAlternatives.filter((h: any) => h !== null && h !== undefined);
           console.log('=== HOTEL DEBUG ===');
@@ -757,7 +769,7 @@ const TripDetailPage: React.FC = () => {
           console.log('Recommended hotel:', recommendedHotel);
           console.log('Should render section:', !!(recommendedHotel || validHotels.length > 0));
           console.log('==================');
-          
+
           return (recommendedHotel || validHotels.length > 0) ? (
             <Card sx={{ mb: 3 }}>
               <CardContent>
@@ -772,64 +784,52 @@ const TripDetailPage: React.FC = () => {
                       Recommended Hotel
                     </Typography>
                     <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'primary.50' }}>
-                      {/* FIX 2: Hotel card — stack vertically on mobile, side-by-side on sm+ */}
-                      <Box sx={{
-                        display: 'flex',
-                        flexDirection: { xs: 'column', sm: 'row' },
-                        justifyContent: 'space-between',
-                        alignItems: { xs: 'flex-start', sm: 'start' },
-                        gap: { xs: 1, sm: 0 },
-                      }}>
+                      <Box sx={cardRowSx}>
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Typography variant="body1" fontWeight="bold" sx={{ wordBreak: 'break-word' }}>
-                            {recommendedHotel.name || 
-                             recommendedHotel.hotel?.name || 
-                             recommendedHotel.details?.hotel?.name || 
+                            {recommendedHotel.name ||
+                             recommendedHotel.hotel?.name ||
+                             recommendedHotel.details?.hotel?.name ||
                              'Recommended Hotel'}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
-                            {recommendedHotel.hotel?.cityCode || 
-                             recommendedHotel.details?.hotel?.cityCode || 
+                            {recommendedHotel.hotel?.cityCode ||
+                             recommendedHotel.details?.hotel?.cityCode ||
                              trip.destination}
                           </Typography>
-                          {(recommendedHotel.offers?.[0]?.room?.description?.text || 
+                          {(recommendedHotel.offers?.[0]?.room?.description?.text ||
                             recommendedHotel.details?.offers?.[0]?.room?.description?.text) && (
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                              {(recommendedHotel.offers?.[0]?.room?.description?.text || 
+                              {(recommendedHotel.offers?.[0]?.room?.description?.text ||
                                 recommendedHotel.details?.offers?.[0]?.room?.description?.text || '').split('\n')[0]}
                             </Typography>
                           )}
                         </Box>
-                        <Box sx={{
-                          textAlign: { xs: 'left', sm: 'right' },
-                          ml: { xs: 0, sm: 2 },
-                          flexShrink: 0,
-                        }}>
-                          {(recommendedHotel.offers?.[0]?.price || 
-                            recommendedHotel.details?.offers?.[0]?.price || 
-                            recommendedHotel.price || 
+                        <Box sx={priceBoxSx}>
+                          {(recommendedHotel.offers?.[0]?.price ||
+                            recommendedHotel.details?.offers?.[0]?.price ||
+                            recommendedHotel.price ||
                             recommendedHotel.price_per_night) ? (
                             <>
-                              <Typography variant="h6" color="primary" sx={{ wordBreak: 'break-word' }}>
-                                {recommendedHotel.price_per_night || 
-                                 `${(recommendedHotel.offers?.[0]?.price?.currency || 
+                              <Typography variant="h6" color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, wordBreak: 'break-word' }}>
+                                {recommendedHotel.price_per_night ||
+                                 `${(recommendedHotel.offers?.[0]?.price?.currency ||
                                      recommendedHotel.details?.offers?.[0]?.price?.currency || '')} ${
-                                   parseFloat(recommendedHotel.offers?.[0]?.price?.total || 
-                                             recommendedHotel.details?.offers?.[0]?.price?.total || 
+                                   parseFloat(recommendedHotel.offers?.[0]?.price?.total ||
+                                             recommendedHotel.details?.offers?.[0]?.price?.total ||
                                              recommendedHotel.price || 0).toLocaleString()
                                  }`}
                               </Typography>
                               <Typography variant="caption" color="text.secondary" display="block">
                                 Total for stay
                               </Typography>
-                              {(recommendedHotel.offers?.[0]?.price?.converted || 
+                              {(recommendedHotel.offers?.[0]?.price?.converted ||
                                 recommendedHotel.details?.offers?.[0]?.price?.converted) && (
                                 <Typography variant="caption" color="text.secondary">
-                                  ≈ {(recommendedHotel.offers?.[0]?.price?.converted?.currency || 
-                                      recommendedHotel.details?.offers?.[0]?.price?.converted?.currency)} {
-                                    parseFloat(recommendedHotel.offers?.[0]?.price?.converted?.amount || 
-                                              recommendedHotel.details?.offers?.[0]?.price?.converted?.amount || 0).toLocaleString()
-                                  }
+                                  ≈ {(recommendedHotel.offers?.[0]?.price?.converted?.currency ||
+                                      recommendedHotel.details?.offers?.[0]?.price?.converted?.currency)}{' '}
+                                  {parseFloat(recommendedHotel.offers?.[0]?.price?.converted?.amount ||
+                                            recommendedHotel.details?.offers?.[0]?.price?.converted?.amount || 0).toLocaleString()}
                                 </Typography>
                               )}
                             </>
@@ -850,112 +850,96 @@ const TripDetailPage: React.FC = () => {
                       Alternative Hotels
                     </Typography>
                     {validHotels.map((hotelItem: any, idx: number) => {
-                      const hotelName = hotelItem.name || 
-                                       hotelItem.hotel?.name || 
-                                       hotelItem.details?.hotel?.name || 
+                      const hotelName = hotelItem.name ||
+                                       hotelItem.hotel?.name ||
+                                       hotelItem.details?.hotel?.name ||
                                        'Hotel';
-                      
                       const hotel = hotelItem.hotel || hotelItem.details?.hotel || {};
                       const offers = hotelItem.offers || hotelItem.details?.offers || [];
                       const firstOffer = offers[0];
-                      
                       const priceInfo = firstOffer?.price || hotelItem.price || null;
                       const pricePerNight = hotelItem.price_per_night;
-                    
-                    return (
-                      <Paper key={idx} variant="outlined" sx={{ p: 2, mb: 2 }}>
-                        {/* FIX 2 (continued): same pattern for alternative hotel cards */}
-                        <Box sx={{
-                          display: 'flex',
-                          flexDirection: { xs: 'column', sm: 'row' },
-                          justifyContent: 'space-between',
-                          alignItems: { xs: 'flex-start', sm: 'start' },
-                          gap: { xs: 1, sm: 0 },
-                        }}>
-                          <Box sx={{ flex: 1, minWidth: 0 }}>
-                            <Typography variant="body1" fontWeight="bold" sx={{ wordBreak: 'break-word' }}>
-                              {hotelName}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {hotel.cityCode || trip.destination}
-                            </Typography>
-                            {firstOffer?.room?.description?.text && (
-                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                                {firstOffer.room.description.text.split('\n')[0]}
+
+                      return (
+                        <Paper key={idx} variant="outlined" sx={{ p: 2, mb: 2 }}>
+                          <Box sx={cardRowSx}>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="body1" fontWeight="bold" sx={{ wordBreak: 'break-word' }}>
+                                {hotelName}
                               </Typography>
-                            )}
-                          </Box>
-                          <Box sx={{
-                            textAlign: { xs: 'left', sm: 'right' },
-                            ml: { xs: 0, sm: 2 },
-                            flexShrink: 0,
-                          }}>
-                            {priceInfo || pricePerNight ? (
-                              <>
-                                <Typography variant="h6" color="primary" sx={{ wordBreak: 'break-word' }}>
-                                  {pricePerNight || `${priceInfo.currency} ${parseFloat(priceInfo.total || 0).toLocaleString()}`}
+                              <Typography variant="body2" color="text.secondary">
+                                {hotel.cityCode || trip.destination}
+                              </Typography>
+                              {firstOffer?.room?.description?.text && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                  {firstOffer.room.description.text.split('\n')[0]}
                                 </Typography>
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  Total for stay
-                                </Typography>
-                                {priceInfo?.converted && (
-                                  <Typography variant="caption" color="text.secondary">
-                                    ≈ {priceInfo.converted.currency} {
-                                      parseFloat(priceInfo.converted.amount || 0).toLocaleString()
-                                    }
+                              )}
+                            </Box>
+                            <Box sx={priceBoxSx}>
+                              {priceInfo || pricePerNight ? (
+                                <>
+                                  <Typography variant="h6" color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, wordBreak: 'break-word' }}>
+                                    {pricePerNight || `${priceInfo.currency} ${parseFloat(priceInfo.total || 0).toLocaleString()}`}
                                   </Typography>
-                                )}
-                              </>
-                            ) : (
-                              <Typography variant="caption" color="text.secondary">
-                                Check booking sites
-                              </Typography>
-                            )}
+                                  <Typography variant="caption" color="text.secondary" display="block">
+                                    Total for stay
+                                  </Typography>
+                                  {priceInfo?.converted && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      ≈ {priceInfo.converted.currency}{' '}
+                                      {parseFloat(priceInfo.converted.amount || 0).toLocaleString()}
+                                    </Typography>
+                                  )}
+                                </>
+                              ) : (
+                                <Typography variant="caption" color="text.secondary">
+                                  Check booking sites
+                                </Typography>
+                              )}
+                            </Box>
                           </Box>
-                        </Box>
-                      </Paper>
-                    );
-                  })}
-                </>
-              )}
-            </CardContent>
-          </Card>
-        ) : null;
+                        </Paper>
+                      );
+                    })}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          ) : null;
         })()}
 
+        {/* ── DAILY ITINERARY ── */}
         {dailyItinerary.length > 0 && (() => {
           let conversionRate = 1;
           const shouldConvert = budgetBreakdown.currency !== trip.currency;
-          
           if (shouldConvert && trip.budget && budgetBreakdown.total_estimated) {
             conversionRate = trip.budget / budgetBreakdown.total_estimated;
           }
-          
           return (
             <Card sx={{ mb: 3 }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>Daily Itinerary</Typography>
                 {dailyItinerary.map((day: any, idx: number) => {
                   console.log('Day structure:', day);
-                  
                   return (
                     <Box key={idx} sx={{ mb: 3, pb: 2, borderBottom: idx < dailyItinerary.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 1 }}>
-                        <Typography variant="subtitle1" fontWeight="bold">
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                        <Typography variant="subtitle1" fontWeight="bold" sx={{ flex: 1, minWidth: 0 }}>
                           Day {day.day}: {day.title}
                         </Typography>
                         {day.estimated_cost && (
-                          <Chip 
+                          <Chip
                             label={`~${shouldConvert ? trip.currency : budgetBreakdown.currency} ${
                               (day.estimated_cost * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })
                             }`}
-                            size="small" 
-                            color="primary" 
+                            size="small"
+                            color="primary"
                             variant="outlined"
                           />
                         )}
                       </Box>
-                      
+
                       {day.activities && day.activities.length > 0 && (
                         <Box sx={{ ml: 2, mt: 1 }}>
                           {day.activities
@@ -999,8 +983,9 @@ const TripDetailPage: React.FC = () => {
           );
         })()}
 
-        {(planningNotes.defaults_used?.length > 0 || 
-          planningNotes.limitations?.length > 0 || 
+        {/* ── PLANNING NOTES ── */}
+        {(planningNotes.defaults_used?.length > 0 ||
+          planningNotes.limitations?.length > 0 ||
           planningNotes.alternatives_available?.length > 0) && (
           <Card sx={{ mb: 3 }}>
             <CardContent>
@@ -1013,17 +998,12 @@ const TripDetailPage: React.FC = () => {
                 <Box sx={{ mb: 2 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <CheckCircle color="success" fontSize="small" />
-                    <Typography variant="subtitle2" fontWeight="bold">
-                      Defaults Applied
-                    </Typography>
+                    <Typography variant="subtitle2" fontWeight="bold">Defaults Applied</Typography>
                   </Box>
                   <List dense>
                     {planningNotes.defaults_used.map((note: string, idx: number) => (
                       <ListItem key={idx} sx={{ py: 0.5 }}>
-                        <ListItemText 
-                          primary={note}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                        />
+                        <ListItemText primary={note} primaryTypographyProps={{ variant: 'body2' }} />
                       </ListItem>
                     ))}
                   </List>
@@ -1034,17 +1014,12 @@ const TripDetailPage: React.FC = () => {
                 <Box sx={{ mb: 2 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <Warning color="warning" fontSize="small" />
-                    <Typography variant="subtitle2" fontWeight="bold">
-                      Limitations
-                    </Typography>
+                    <Typography variant="subtitle2" fontWeight="bold">Limitations</Typography>
                   </Box>
                   <List dense>
                     {planningNotes.limitations.map((note: string, idx: number) => (
                       <ListItem key={idx} sx={{ py: 0.5 }}>
-                        <ListItemText 
-                          primary={note}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                        />
+                        <ListItemText primary={note} primaryTypographyProps={{ variant: 'body2' }} />
                       </ListItem>
                     ))}
                   </List>
@@ -1055,17 +1030,12 @@ const TripDetailPage: React.FC = () => {
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <Lightbulb color="info" fontSize="small" />
-                    <Typography variant="subtitle2" fontWeight="bold">
-                      Alternatives Available
-                    </Typography>
+                    <Typography variant="subtitle2" fontWeight="bold">Alternatives Available</Typography>
                   </Box>
                   <List dense>
                     {planningNotes.alternatives_available.map((note: string, idx: number) => (
                       <ListItem key={idx} sx={{ py: 0.5 }}>
-                        <ListItemText 
-                          primary={note}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                        />
+                        <ListItemText primary={note} primaryTypographyProps={{ variant: 'body2' }} />
                       </ListItem>
                     ))}
                   </List>
