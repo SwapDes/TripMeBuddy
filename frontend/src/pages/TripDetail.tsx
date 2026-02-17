@@ -17,6 +17,8 @@ import {
   List,
   ListItem,
   ListItemText,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   ArrowBack,
@@ -58,6 +60,9 @@ const TripDetailPage: React.FC = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [replanProgressOpen, setReplanProgressOpen] = useState(false);
   const [replanJobId, setReplanJobId] = useState<string>('');
+
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   console.log('TripDetail mounted, id:', id);
 
@@ -257,41 +262,32 @@ const TripDetailPage: React.FC = () => {
 
   const fallbackInfo = getFallbackInfo();
 
-  // Reusable style: hotel/flight price box — stacks below name on mobile
+  // isMobile-driven styles — not breakpoint strings, actual JS booleans
   const priceBoxSx = {
     display: 'flex',
-    flexDirection: 'column',
-    alignItems: { xs: 'flex-start', md: 'flex-end' },
+    flexDirection: 'column' as const,
+    alignItems: isMobile ? 'flex-start' : 'flex-end',
     flexShrink: 0,
-    minWidth: 0,
-    maxWidth: { xs: '100%', md: 'auto' },
-    mt: { xs: 1, md: 0 },
-    ml: { xs: 0, md: 2 },
+    mt: isMobile ? 1 : 0,
+    ml: isMobile ? 0 : 2,
   };
 
-  // Reusable style: card inner row — stacks on mobile
   const cardRowSx = {
     display: 'flex',
-    flexDirection: { xs: 'column', md: 'row' },
+    flexDirection: isMobile ? ('column' as const) : ('row' as const),
     justifyContent: 'space-between',
-    alignItems: { xs: 'flex-start', md: 'start' },
+    alignItems: 'flex-start',
     width: '100%',
   };
 
   return (
-    <Container maxWidth="lg" sx={{ px: { xs: 1.5, sm: 3 } }}>
+    <Container maxWidth="lg" sx={{ px: isMobile ? 1.5 : 3 }}>
       <Box sx={{ mt: 3, mb: 4 }}>
 
-        {/* ── HEADER: Back / Title / Star on row 1, Edit+Delete on row 2 on mobile ── */}
+        {/* ── HEADER ── */}
         <Box sx={{ mb: 3 }}>
-          {/* Row 1: Back button + trip name + favourite star */}
-          <Box sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            mb: 1,
-            minWidth: 0,
-          }}>
+          {/* Row 1: Back + title + star */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
             <Button
               startIcon={<ArrowBack />}
               onClick={() => navigate('/dashboard')}
@@ -301,17 +297,13 @@ const TripDetailPage: React.FC = () => {
               Back
             </Button>
             <Typography
-              variant="h5"
               component="h1"
               fontWeight="bold"
               sx={{
                 flex: 1,
                 minWidth: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: { xs: 'normal', md: 'nowrap' },
                 wordBreak: 'break-word',
-                fontSize: { xs: '1.1rem', sm: '1.4rem', md: '1.75rem' },
+                fontSize: isMobile ? '1.1rem' : '1.75rem',
               }}
             >
               {trip.trip_name}
@@ -321,12 +313,8 @@ const TripDetailPage: React.FC = () => {
             </IconButton>
           </Box>
 
-          {/* Row 2: Edit + Delete — left-aligned under title on mobile, right on desktop */}
-          <Box sx={{
-            display: 'flex',
-            justifyContent: { xs: 'flex-start', md: 'flex-end' },
-            gap: 1,
-          }}>
+          {/* Row 2: Edit + Delete — always on their own line, left-aligned on mobile */}
+          <Box sx={{ display: 'flex', gap: 1, justifyContent: isMobile ? 'flex-start' : 'flex-end' }}>
             <Button variant="outlined" startIcon={<Edit />} onClick={handleEditClick} size="small">
               Edit
             </Button>
@@ -579,11 +567,11 @@ const TripDetailPage: React.FC = () => {
 
                 return (
                   <>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(2, 1fr)' }, gap: 2 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(2, 1fr)', gap: 2 }}>
                       {budgetBreakdown.flights && (
                         <Box>
                           <Typography variant="body2" color="text.secondary">Flights</Typography>
-                          <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                          <Typography variant="h6" sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
                             {shouldConvert ? trip.currency : budgetBreakdown.currency}{' '}
                             {(budgetBreakdown.flights * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </Typography>
@@ -592,7 +580,7 @@ const TripDetailPage: React.FC = () => {
                       {budgetBreakdown.accommodation && (
                         <Box>
                           <Typography variant="body2" color="text.secondary">Accommodation</Typography>
-                          <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                          <Typography variant="h6" sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
                             {shouldConvert ? trip.currency : budgetBreakdown.currency}{' '}
                             {(budgetBreakdown.accommodation * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </Typography>
@@ -601,7 +589,7 @@ const TripDetailPage: React.FC = () => {
                       {budgetBreakdown.food_and_activities && (
                         <Box>
                           <Typography variant="body2" color="text.secondary">Food & Activities</Typography>
-                          <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                          <Typography variant="h6" sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
                             {shouldConvert ? trip.currency : budgetBreakdown.currency}{' '}
                             {(budgetBreakdown.food_and_activities * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </Typography>
@@ -609,7 +597,7 @@ const TripDetailPage: React.FC = () => {
                       )}
                       <Box>
                         <Typography variant="body2" color="text.secondary">Total Estimated</Typography>
-                        <Typography variant="h5" color="primary" fontWeight="bold" sx={{ fontSize: { xs: '1.1rem', sm: '1.5rem' } }}>
+                        <Typography variant="h5" color="primary" fontWeight="bold" sx={{ fontSize: isMobile ? '1.1rem' : '1.5rem' }}>
                           {shouldConvert ? trip.currency : budgetBreakdown.currency}{' '}
                           {(budgetBreakdown.total_estimated * conversionRate).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </Typography>
@@ -663,7 +651,7 @@ const TripDetailPage: React.FC = () => {
                           </Typography>
                         </Box>
                         <Box sx={priceBoxSx}>
-                          <Typography variant="h6" color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                          <Typography variant="h6" color="primary" sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
                             {outboundFlight.price}
                           </Typography>
                           {outboundFlight.details?.price?.converted && (
@@ -697,7 +685,7 @@ const TripDetailPage: React.FC = () => {
                           </Typography>
                         </Box>
                         <Box sx={priceBoxSx}>
-                          <Typography variant="h6" color="success.main" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                          <Typography variant="h6" color="success.main" sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
                             {returnFlight.price}
                           </Typography>
                           {returnFlight.details?.price?.converted && (
@@ -738,7 +726,7 @@ const TripDetailPage: React.FC = () => {
                                 </Typography>
                               </Box>
                               <Box sx={priceBoxSx}>
-                                <Typography variant="h6" color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                                <Typography variant="h6" color="primary" sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
                                   {flightOffer.price}
                                 </Typography>
                                 {price?.converted && (
@@ -811,7 +799,7 @@ const TripDetailPage: React.FC = () => {
                             recommendedHotel.price ||
                             recommendedHotel.price_per_night) ? (
                             <>
-                              <Typography variant="h6" color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, wordBreak: 'break-word' }}>
+                              <Typography variant="h6" color="primary" sx={{ fontSize: isMobile ? '1rem' : '1.25rem', wordBreak: 'break-word' }}>
                                 {recommendedHotel.price_per_night ||
                                  `${(recommendedHotel.offers?.[0]?.price?.currency ||
                                      recommendedHotel.details?.offers?.[0]?.price?.currency || '')} ${
@@ -879,7 +867,7 @@ const TripDetailPage: React.FC = () => {
                             <Box sx={priceBoxSx}>
                               {priceInfo || pricePerNight ? (
                                 <>
-                                  <Typography variant="h6" color="primary" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, wordBreak: 'break-word' }}>
+                                  <Typography variant="h6" color="primary" sx={{ fontSize: isMobile ? '1rem' : '1.25rem', wordBreak: 'break-word' }}>
                                     {pricePerNight || `${priceInfo.currency} ${parseFloat(priceInfo.total || 0).toLocaleString()}`}
                                   </Typography>
                                   <Typography variant="caption" color="text.secondary" display="block">
