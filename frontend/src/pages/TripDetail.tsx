@@ -278,19 +278,32 @@ const TripDetailPage: React.FC = () => {
   return (
     <Container maxWidth="lg">
       <Box sx={{ mt: 4, mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Button startIcon={<ArrowBack />} onClick={() => navigate('/dashboard')}>
+        {/* FIX 1: Header row — wraps on mobile so Edit/Delete don't overflow right */}
+        <Box sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'start',
+          mb: 3,
+          flexWrap: 'wrap',
+          gap: 1,
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}>
+            <Button startIcon={<ArrowBack />} onClick={() => navigate('/dashboard')} sx={{ flexShrink: 0 }}>
               Back
             </Button>
-            <Typography variant="h4" component="h1" fontWeight="bold">
+            <Typography
+              variant="h4"
+              component="h1"
+              fontWeight="bold"
+              sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
               {trip.trip_name}
             </Typography>
-            <IconButton onClick={handleToggleFavorite}>
+            <IconButton onClick={handleToggleFavorite} sx={{ flexShrink: 0 }}>
               {trip.is_favorite ? <Star color="warning" /> : <StarBorder />}
             </IconButton>
           </Box>
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
             <Button variant="outlined" startIcon={<Edit />} onClick={handleEditClick}>
               Edit
             </Button>
@@ -759,9 +772,16 @@ const TripDetailPage: React.FC = () => {
                       Recommended Hotel
                     </Typography>
                     <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'primary.50' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                        <Box sx={{ flex: 1 }}>
-                          <Typography variant="body1" fontWeight="bold">
+                      {/* FIX 2: Hotel card — stack vertically on mobile, side-by-side on sm+ */}
+                      <Box sx={{
+                        display: 'flex',
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        justifyContent: 'space-between',
+                        alignItems: { xs: 'flex-start', sm: 'start' },
+                        gap: { xs: 1, sm: 0 },
+                      }}>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="body1" fontWeight="bold" sx={{ wordBreak: 'break-word' }}>
                             {recommendedHotel.name || 
                              recommendedHotel.hotel?.name || 
                              recommendedHotel.details?.hotel?.name || 
@@ -780,13 +800,17 @@ const TripDetailPage: React.FC = () => {
                             </Typography>
                           )}
                         </Box>
-                        <Box sx={{ textAlign: 'right', ml: 2 }}>
+                        <Box sx={{
+                          textAlign: { xs: 'left', sm: 'right' },
+                          ml: { xs: 0, sm: 2 },
+                          flexShrink: 0,
+                        }}>
                           {(recommendedHotel.offers?.[0]?.price || 
                             recommendedHotel.details?.offers?.[0]?.price || 
                             recommendedHotel.price || 
                             recommendedHotel.price_per_night) ? (
                             <>
-                              <Typography variant="h6" color="primary">
+                              <Typography variant="h6" color="primary" sx={{ wordBreak: 'break-word' }}>
                                 {recommendedHotel.price_per_night || 
                                  `${(recommendedHotel.offers?.[0]?.price?.currency || 
                                      recommendedHotel.details?.offers?.[0]?.price?.currency || '')} ${
@@ -840,9 +864,16 @@ const TripDetailPage: React.FC = () => {
                     
                     return (
                       <Paper key={idx} variant="outlined" sx={{ p: 2, mb: 2 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="body1" fontWeight="bold">
+                        {/* FIX 2 (continued): same pattern for alternative hotel cards */}
+                        <Box sx={{
+                          display: 'flex',
+                          flexDirection: { xs: 'column', sm: 'row' },
+                          justifyContent: 'space-between',
+                          alignItems: { xs: 'flex-start', sm: 'start' },
+                          gap: { xs: 1, sm: 0 },
+                        }}>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography variant="body1" fontWeight="bold" sx={{ wordBreak: 'break-word' }}>
                               {hotelName}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
@@ -854,10 +885,14 @@ const TripDetailPage: React.FC = () => {
                               </Typography>
                             )}
                           </Box>
-                          <Box sx={{ textAlign: 'right', ml: 2 }}>
+                          <Box sx={{
+                            textAlign: { xs: 'left', sm: 'right' },
+                            ml: { xs: 0, sm: 2 },
+                            flexShrink: 0,
+                          }}>
                             {priceInfo || pricePerNight ? (
                               <>
-                                <Typography variant="h6" color="primary">
+                                <Typography variant="h6" color="primary" sx={{ wordBreak: 'break-word' }}>
                                   {pricePerNight || `${priceInfo.currency} ${parseFloat(priceInfo.total || 0).toLocaleString()}`}
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary" display="block">
