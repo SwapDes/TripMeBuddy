@@ -76,7 +76,12 @@ class TripPlanner:
             amadeus_service=amadeus_service,
             currency_service=self.currency_service
         )
-        self.itinerary_agent = ItineraryBuilderAgent(gemini_api_key)
+
+        self.itinerary_agent = ItineraryBuilderAgent(
+            gemini_api_key=gemini_api_key,
+            currency_service=self.currency_service,
+            budget_service=self.budget_service
+        )
 
         # Build the workflow graph
         self.workflow = self._build_workflow()
