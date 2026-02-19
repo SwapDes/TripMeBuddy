@@ -2,7 +2,7 @@ from typing import Dict, List, Optional
 import logging
 import json
 import re
-import requests
+import asyncio
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import StructuredTool
@@ -11,14 +11,13 @@ from langgraph.prebuilt import create_react_agent
 
 logger = logging.getLogger(__name__)
 
-EXCHANGE_RATE_API = "https://api.exchangerate-api.com/v4/latest/{base}"
-
 
 class ItineraryBuilderAgent:
     """Genuine ReAct agent to build comprehensive trip itinerary with budget validation."""
 
-    def __init__(self, gemini_api_key: str, currency_service=None):
+    def __init__(self, gemini_api_key: str, currency_service=None, budget_service=None):
         self.currency_service = currency_service
+        self.budget_service = budget_service
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
             google_api_key=gemini_api_key
@@ -32,48 +31,106 @@ class ItineraryBuilderAgent:
     # ------------------------------------------------------------------
 
     def _build_tools(self):
+        currency_service = self.currency_service
 
         def get_exchange_rate(from_currency: str, to_currency: str) -> float:
             """
             Get the current exchange rate between two currencies.
-            Use this when you need to estimate activity or food costs in the user's
-            budget currency but the local prices are in a different currency.
-            For example, if the user's budget is in INR but local Bangkok costs are
-            in THB, call this to convert THB costs to INR.
-            Returns the conversion rate as a float (multiply local cost by this rate).
+            Use this when you need to estimate activity or daily costs in the user's
+            budget currency but local prices are in a different currency.
+            For example, if the user's budget is in INR but destination costs are
+            typically quoted in THB or USD, call this to get the conversion rate.
+            Returns the rate as a float (1 unit of from_currency = X units of to_currency).
             Returns 1.0 if the currencies are the same or if the rate cannot be fetched.
             """
-            if not from_currency or not to_currency:
+            if from_currency == to_currency:
                 return 1.0
-            if from_currency.upper() == to_currency.upper():
+            if not currency_service:
                 return 1.0
             try:
-                url = EXCHANGE_RATE_API.format(base=from_currency.upper())
-                response = requests.get(url, timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    rate = data.get("rates", {}).get(to_currency.upper())
-                    if rate:
-                        logger.info(f"Exchange rate {from_currency}->{to_currency}: {rate}")
-                        return float(rate)
+                loop = asyncio.new_event_loop()
+                try:
+                    rate_data = loop.run_until_complete(
+                        currency_service.get_exchange_rate(from_currency, to_currency)
+                    )
+                    if rate_data and rate_data.get("rate"):
+                        return float(rate_data["rate"])
+                    return 1.0
+                finally:
+                    loop.close()
             except Exception as e:
                 logger.warning(f"get_exchange_rate tool error: {e}")
-            return 1.0
+                return 1.0
 
-        return [StructuredTool.from_function(get_exchange_rate)]
+        def validate_budget(
+            flights_cost: float,
+            hotels_cost: float,
+            activities_cost: float,
+            total_budget: float,
+            currency: str
+        ) -> dict:
+            """
+            Check whether the estimated trip costs are within the user's total budget.
+            Call this after estimating all daily costs to confirm whether the activities
+            fit within the user's budget, then adjust recommendations if over budget.
+            Returns a dict with is_within_budget, variance_percentage, and a recommendation.
+            """
+            try:
+                total_estimated = flights_cost + hotels_cost + activities_cost
+                if total_budget <= 0:
+                    return {
+                        "is_within_budget": True,
+                        "total_estimated": round(total_estimated, 2),
+                        "total_budget": total_budget,
+                        "variance_percentage": 0.0,
+                        "recommendation": "No budget specified - costs shown for reference only."
+                    }
+                variance = total_estimated - total_budget
+                variance_pct = (variance / total_budget) * 100
+                is_within = abs(variance_pct) <= 10.0
+                if variance_pct > 10:
+                    recommendation = (
+                        f"Estimated cost exceeds budget by {variance_pct:.1f}%. "
+                        f"Consider reducing activity spend or choosing lower-cost options."
+                    )
+                elif variance_pct < -10:
+                    recommendation = (
+                        f"Estimated cost is {abs(variance_pct):.1f}% under budget. "
+                        f"There is room for upgrades or additional experiences."
+                    )
+                else:
+                    recommendation = "Trip is within budget."
+
+                return {
+                    "is_within_budget": is_within,
+                    "total_estimated": round(total_estimated, 2),
+                    "total_budget": round(total_budget, 2),
+                    "variance": round(variance, 2),
+                    "variance_percentage": round(variance_pct, 1),
+                    "currency": currency,
+                    "recommendation": recommendation
+                }
+            except Exception as e:
+                logger.warning(f"validate_budget tool error: {e}")
+                return {"is_within_budget": True, "recommendation": "Budget validation unavailable."}
+
+        return [
+            StructuredTool.from_function(get_exchange_rate),
+            StructuredTool.from_function(validate_budget),
+        ]
 
     # ------------------------------------------------------------------
-    # Public interface — identical signature to original
+    # Public interface - identical signature to original
     # ------------------------------------------------------------------
 
     def build(
-            self,
-            user_request: str,
-            preferences: Dict,
-            destination: Dict,
-            flight_result: Dict,
-            hotel_result: Dict,
-            budget_allocation: Optional[Dict] = None
+        self,
+        user_request: str,
+        preferences: Dict,
+        destination: Dict,
+        flight_result: Dict,
+        hotel_result: Dict,
+        budget_allocation: Optional[Dict] = None
     ) -> Dict:
         try:
             logger.info("Building comprehensive trip itinerary")
@@ -82,7 +139,7 @@ class ItineraryBuilderAgent:
             best_hotel = self._get_best_hotel(hotel_result)
 
             daily_itinerary = self._generate_daily_itinerary(
-                preferences, destination, flight_result, hotel_result
+                preferences, destination, budget_allocation
             )
 
             budget_breakdown = self._calculate_budget_with_validation(
@@ -106,10 +163,10 @@ class ItineraryBuilderAgent:
                     "duration_days": preferences.get("duration", {}).get("days", 7),
                     "travel_dates": {
                         "departure": flight_result.get("search_params", {}).get("departure_date"),
-                        "return": flight_result.get("search_params", {}).get("return_date"),
+                        "return": flight_result.get("search_params", {}).get("return_date")
                     },
                     "travelers": preferences.get("travelers", {}).get("adults", 1),
-                    "travel_style": preferences.get("travel_style", "comfort"),
+                    "travel_style": preferences.get("travel_style", "comfort")
                 },
                 "planning_notes": planning_notes,
                 "destination_info": {
@@ -117,24 +174,24 @@ class ItineraryBuilderAgent:
                     "highlights": destination.get("highlights", []),
                     "weather": destination.get("weather_info", ""),
                     "cultural_notes": destination.get("cultural_notes", ""),
-                    "visa_requirements": destination.get("visa_requirements", ""),
+                    "visa_requirements": destination.get("visa_requirements", "")
                 },
                 "transportation": {
                     "outbound_flight": self._format_flight(best_flight) if best_flight else None,
                     "return_flight": self._format_flight(best_flight, is_return=True) if best_flight else None,
                     "flight_alternatives": [self._format_flight(f) for f in flight_result.get("flights", [])[:3]],
-                    "local_transport_tips": self._get_local_transport_tips(destination),
+                    "local_transport_tips": self._get_local_transport_tips(destination)
                 },
                 "accommodation": {
                     "recommended_hotel": self._format_hotel(best_hotel) if best_hotel else None,
                     "hotel_alternatives": formatted_hotel_alternatives,
-                    "accommodation_tips": self._get_accommodation_tips(preferences, destination),
+                    "accommodation_tips": self._get_accommodation_tips(preferences, destination)
                 },
                 "daily_itinerary": daily_itinerary,
                 "budget_breakdown": budget_breakdown,
                 "packing_list": self._generate_packing_list(preferences, destination),
                 "travel_tips": self._generate_travel_tips(preferences, destination),
-                "emergency_contacts": self._get_emergency_contacts(destination),
+                "emergency_contacts": self._get_emergency_contacts(destination)
             }
 
             logger.info("Trip itinerary built successfully")
@@ -145,68 +202,27 @@ class ItineraryBuilderAgent:
             return {"success": False, "error": str(e), "trip_plan": None}
 
     # ------------------------------------------------------------------
-    # Agent-driven daily itinerary generation
+    # ReAct agent - daily itinerary generation
     # ------------------------------------------------------------------
 
     def _generate_daily_itinerary(
-            self,
-            preferences: Dict,
-            destination: Dict,
-            flight_result: Dict,
-            hotel_result: Dict
+        self,
+        preferences: Dict,
+        destination: Dict,
+        budget_allocation: Optional[Dict]
     ) -> List[Dict]:
         try:
             duration = preferences.get("duration", {}).get("days", 7)
             interests = preferences.get("interests", [])
             user_currency = preferences.get("budget", {}).get("currency", "USD")
-            city = destination.get("city", "the destination")
-
-            system_prompt = (
-                "You are an expert travel itinerary planner.\n\n"
-                "You have one tool: get_exchange_rate.\n"
-                "Call get_exchange_rate if you need to convert local activity or food costs "
-                "into the user's budget currency. For example, if local costs are in THB "
-                "but the user's budget is in INR, call get_exchange_rate('THB', 'INR') "
-                "to get the conversion rate, then multiply local prices by that rate.\n"
-                "After any necessary conversions, return ONLY a valid JSON array — "
-                "no markdown fences, no code blocks, no explanation text."
-            )
-
-            task = f"""Create a detailed day-by-day itinerary for a {duration}-day trip to {city}.
-
-Interests: {', '.join(interests) if interests else 'General sightseeing'}
-Travel Style: {preferences.get('travel_style', 'comfort')}
-User's Budget Currency: {user_currency}
-
-If local prices are in a currency different from {user_currency}, call get_exchange_rate
-to convert them before including estimated_cost values.
-
-Return ONLY a JSON array with one object per day:
-[
-  {{
-    "day": 1,
-    "title": "Arrival and Exploration",
-    "activities": [
-      {{"time": "Morning", "title": "Activity title", "description": "Description"}},
-      {{"time": "Afternoon", "title": "Activity title", "description": "Description"}},
-      {{"time": "Evening", "title": "Activity title", "description": "Description"}}
-    ],
-    "meals": {{"breakfast": "Suggestion", "lunch": "Suggestion", "dinner": "Suggestion"}},
-    "estimated_cost": 100,
-    "tips": ["Tip 1", "Tip 2"]
-  }}
-]
-
-Rules:
-- estimated_cost MUST be in {user_currency}
-- This is the daily cost for activities, entrance fees, local transport, and food (excluding hotel)
-- Budget trip: 50-80 {user_currency} per day | Mid-range: 80-150 | Luxury: 150-300+
-- Each activity must have "time", "title", and "description" fields
-- Include realistic timing, restaurant recommendations, and practical tips"""
+            total_budget = preferences.get("budget", {}).get("total", 0)
 
             messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=task),
+                SystemMessage(content=self._build_itinerary_system_prompt()),
+                HumanMessage(content=self._build_itinerary_task(
+                    destination, duration, interests, preferences,
+                    user_currency, total_budget, budget_allocation
+                )),
             ]
 
             result = self.agent.invoke({"messages": messages})
@@ -217,12 +233,75 @@ Rules:
                 if itinerary:
                     return itinerary
 
-            logger.warning("ItineraryBuilderAgent: falling back to default itinerary")
             return self._get_default_itinerary(duration)
 
         except Exception as e:
             logger.error(f"Error generating daily itinerary: {e}")
-            return self._get_default_itinerary(preferences.get("duration", {}).get("days", 7))
+            return self._get_default_itinerary(
+                preferences.get("duration", {}).get("days", 7)
+            )
+
+    def _build_itinerary_system_prompt(self) -> str:
+        return (
+            "You are an expert travel itinerary planner.\n\n"
+            "You have two tools:\n"
+            "- get_exchange_rate: call this when you need to convert activity costs "
+            "from local currency to the user's budget currency\n"
+            "- validate_budget: call this after estimating all daily costs to confirm "
+            "whether the activities fit within the user's budget, then adjust if needed\n\n"
+            "After using any necessary tools, return ONLY a valid JSON array - "
+            "no markdown fences, no code blocks, no explanation text."
+        )
+
+    def _build_itinerary_task(
+        self,
+        destination: Dict,
+        duration: int,
+        interests: List[str],
+        preferences: Dict,
+        user_currency: str,
+        total_budget: float,
+        budget_allocation: Optional[Dict]
+    ) -> str:
+        activity_budget = ""
+        if budget_allocation and budget_allocation.get("components"):
+            allocated = budget_allocation["components"].get("activities", {}).get("allocated", 0)
+            food_allocated = budget_allocation["components"].get("food", {}).get("allocated", 0)
+            activity_budget = (
+                f"Activities budget: {allocated} {user_currency}, "
+                f"Food budget: {food_allocated} {user_currency}"
+            )
+
+        return f"""Create a detailed {duration}-day itinerary for {destination.get('city', 'the destination')}, {destination.get('country', '')}.
+
+Traveler preferences:
+- Interests: {', '.join(interests) if interests else 'General sightseeing'}
+- Travel style: {preferences.get('travel_style', 'comfort')}
+- Budget currency: {user_currency}
+- Total budget: {total_budget if total_budget else 'Not specified'} {user_currency}
+{activity_budget}
+
+Instructions:
+1. If activity costs at the destination are typically in a currency other than {user_currency}, call get_exchange_rate first to get the conversion rate, then use it to estimate costs in {user_currency}
+2. Estimate realistic daily costs in {user_currency} for activities, entrance fees, local transport, and food
+3. Call validate_budget with your estimated costs to confirm they fit the budget - adjust activity recommendations if over budget
+4. Return a JSON array with one object per day
+
+Each day object must have this structure:
+{{
+  "day": 1,
+  "title": "Arrival and First Impressions",
+  "activities": [
+    {{"time": "Morning", "title": "Activity name", "description": "What to do and why"}},
+    {{"time": "Afternoon", "title": "Activity name", "description": "What to do and why"}},
+    {{"time": "Evening", "title": "Activity name", "description": "What to do and why"}}
+  ],
+  "meals": {{"breakfast": "Suggestion", "lunch": "Suggestion", "dinner": "Suggestion"}},
+  "estimated_cost": 120,
+  "tips": ["Practical tip 1", "Practical tip 2"]
+}}
+
+The estimated_cost must be in {user_currency} and cover activities, food, and local transport for that day (not hotel)."""
 
     # ------------------------------------------------------------------
     # Message extraction
@@ -250,36 +329,7 @@ Rules:
         return ""
 
     # ------------------------------------------------------------------
-    # Parsing
-    # ------------------------------------------------------------------
-
-    def _parse_itinerary_response(self, response_text: str) -> List[Dict]:
-        try:
-            cleaned = response_text.strip()
-            match = re.search(r'```(?:json)?\s*(.*?)\s*```', cleaned, re.DOTALL)
-            if match:
-                cleaned = match.group(1)
-            itinerary = json.loads(cleaned)
-            return itinerary if isinstance(itinerary, list) else []
-        except Exception as e:
-            logger.error(f"Error parsing itinerary: {e}")
-            return []
-
-    def _get_default_itinerary(self, days: int) -> List[Dict]:
-        return [
-            {
-                "day": i + 1,
-                "title": f"Day {i + 1}",
-                "activities": [],
-                "meals": {},
-                "estimated_cost": 100,
-                "tips": [],
-            }
-            for i in range(days)
-        ]
-
-    # ------------------------------------------------------------------
-    # All helper methods below are identical to the original
+    # All methods below are identical to the original
     # ------------------------------------------------------------------
 
     def _get_best_flight(self, flight_result: Dict) -> Optional[Dict]:
@@ -306,7 +356,7 @@ Rules:
                 "price": f"{price_info.get('total', 0)} {price_info.get('currency', 'USD')}",
                 "duration": itinerary.get("duration", "N/A"),
                 "segments": len(itinerary.get("segments", [])),
-                "details": flight,
+                "details": flight
             }
         except Exception as e:
             logger.error(f"Error formatting flight: {e}")
@@ -328,24 +378,49 @@ Rules:
                 "price_per_night": f"{price_info.get('total', 0)} {price_info.get('currency', 'USD')}",
                 "room_type": best_offer.get("room", {}).get("typeEstimated", {}).get("category", "Standard"),
                 "address": hotel_info.get("address", {}),
-                "details": hotel,
+                "details": hotel
             }
         except Exception as e:
             logger.error(f"Error formatting hotel: {e}")
             return None
 
+    def _parse_itinerary_response(self, response_text: str) -> List[Dict]:
+        try:
+            cleaned = response_text.strip()
+            match = re.search(r'```(?:json)?\s*(.*?)\s*```', cleaned, re.DOTALL)
+            if match:
+                cleaned = match.group(1)
+            itinerary = json.loads(cleaned)
+            return itinerary if isinstance(itinerary, list) else []
+        except Exception as e:
+            logger.error(f"Error parsing itinerary: {e}")
+            return []
+
+    def _get_default_itinerary(self, days: int) -> List[Dict]:
+        return [
+            {
+                "day": i + 1,
+                "title": f"Day {i + 1}",
+                "activities": [],
+                "meals": {},
+                "estimated_cost": 100,
+                "tips": []
+            }
+            for i in range(days)
+        ]
+
     def _calculate_budget_with_validation(
-            self,
-            preferences: Dict,
-            best_flight: Optional[Dict],
-            best_hotel: Optional[Dict],
-            daily_itinerary: List[Dict],
-            budget_allocation: Optional[Dict]
+        self,
+        preferences: Dict,
+        best_flight: Optional[Dict],
+        best_hotel: Optional[Dict],
+        daily_itinerary: List[Dict],
+        budget_allocation: Optional[Dict]
     ) -> Dict:
         try:
             user_currency = preferences.get("budget", {}).get("currency", "USD")
 
-            flight_cost = 0.0
+            flight_cost = 0
             if best_flight:
                 try:
                     price_info = best_flight.get("price", {})
@@ -357,7 +432,7 @@ Rules:
                 except Exception as e:
                     logger.error(f"Error extracting flight cost: {e}")
 
-            hotel_cost = 0.0
+            hotel_cost = 0
             if best_hotel:
                 try:
                     offers = best_hotel.get("offers", [])
@@ -371,7 +446,9 @@ Rules:
                 except Exception as e:
                     logger.error(f"Error extracting hotel cost: {e}")
 
-            activities_and_food_cost = sum(day.get("estimated_cost", 0) for day in daily_itinerary)
+            activities_and_food_cost = sum(
+                day.get("estimated_cost", 0) for day in daily_itinerary
+            )
             total_estimated = flight_cost + hotel_cost + activities_and_food_cost
 
             budget_breakdown = {
@@ -385,10 +462,10 @@ Rules:
                     {
                         "day": day.get("day"),
                         "title": day.get("title", f"Day {day.get('day')}"),
-                        "estimated_cost": day.get("estimated_cost", 0),
+                        "estimated_cost": day.get("estimated_cost", 0)
                     }
                     for day in daily_itinerary
-                ],
+                ]
             }
 
             if budget_allocation:
@@ -398,18 +475,14 @@ Rules:
                         "flights": flight_cost,
                         "hotels": hotel_cost,
                         "food": activities_and_food_cost * 0.6,
-                        "activities": activities_and_food_cost * 0.4,
-                    },
+                        "activities": activities_and_food_cost * 0.4
+                    }
                 )
                 budget_breakdown["is_within_budget"] = validation_result.get("is_within_budget")
                 budget_breakdown["variance_percentage"] = validation_result.get("variance_percentage")
                 budget_breakdown["total_budget"] = validation_result.get("total_budget")
                 if validation_result.get("has_disclaimer"):
                     budget_breakdown["budget_disclaimer"] = validation_result.get("disclaimer")
-                logger.info(
-                    f"Budget validation - Within budget: {validation_result.get('is_within_budget')}, "
-                    f"Variance: {validation_result.get('variance_percentage', 0):.1f}%"
-                )
 
             logger.info(
                 f"Budget calculated - Flights: {flight_cost}, Hotels: {hotel_cost}, "
@@ -446,7 +519,7 @@ Rules:
                         "actual": round(actual_cost, 2),
                         "variance": round(comp_variance, 2),
                         "variance_pct": round(comp_variance_pct, 1),
-                        "over_budget": comp_variance > 0,
+                        "over_budget": comp_variance > 0
                     })
 
             is_within_budget = abs(variance_pct) <= tolerance_percentage
@@ -458,14 +531,13 @@ Rules:
                 "variance_percentage": round(variance_pct, 1),
                 "currency": currency,
                 "component_issues": component_issues,
-                "has_disclaimer": not is_within_budget or len(component_issues) > 0,
+                "has_disclaimer": not is_within_budget or len(component_issues) > 0
             }
             if result["has_disclaimer"]:
                 result["disclaimer"] = self._generate_budget_disclaimer(
                     variance_pct, component_issues, currency
                 )
             return result
-
         except Exception as e:
             logger.error(f"Error validating budget: {e}")
             return {
@@ -474,8 +546,8 @@ Rules:
                 "disclaimer": {
                     "severity": "warning",
                     "message": "Unable to validate budget. Please review costs carefully.",
-                    "details": [],
-                },
+                    "details": []
+                }
             }
 
     def _generate_budget_disclaimer(self, variance_pct: float, component_issues: list, currency: str) -> Dict:
@@ -487,33 +559,28 @@ Rules:
 
         if variance_pct > 0:
             message = f"Trip cost exceeds your budget by {abs(variance_pct):.1f}%"
-            if component_issues:
-                primary_issue = max(component_issues, key=lambda x: abs(x["variance"]))
-                reason = f"primarily due to higher {primary_issue['component'].lower()} costs"
-            else:
-                reason = "across multiple components"
-            details = [f"Your estimated total is higher than planned {reason}.", "Consider the following options:"]
+            details = ["Your estimated total is higher than planned.", "Consider the following options:"]
             for issue in sorted(component_issues, key=lambda x: abs(x["variance"]), reverse=True)[:3]:
                 comp_name = issue["component"]
                 if issue["over_budget"]:
                     if comp_name == "Hotels":
-                        details.append(f"{comp_name}: Consider accommodations in different areas or 3-star alternatives (currently {currency} {issue['actual']} vs budgeted {currency} {issue['allocated']})")
+                        details.append(f"{comp_name}: Consider accommodations in different areas or 3-star alternatives")
                     elif comp_name == "Flights":
-                        details.append(f"{comp_name}: Look for flights on different dates or with connections (currently {currency} {issue['actual']} vs budgeted {currency} {issue['allocated']})")
+                        details.append(f"{comp_name}: Look for flights on different dates or with connections")
                     elif comp_name == "Food":
                         details.append(f"{comp_name}: Try local restaurants and street food instead of tourist areas")
                     elif comp_name == "Activities":
                         details.append(f"{comp_name}: Prioritize must-see attractions and look for free walking tours")
-            if severity == "error":
-                details.append("We strongly recommend adjusting your selections or increasing your budget.")
         else:
             message = f"Trip cost is {abs(variance_pct):.1f}% under budget"
-            details = ["You have room in your budget for upgrades or additional experiences.", "You could consider:"]
-            for issue in component_issues:
-                if not issue["over_budget"]:
-                    details.append(f"Upgrading your {issue['component'].lower()} options")
+            details = ["You have room in your budget for upgrades or additional experiences."]
 
-        return {"severity": severity, "message": message, "details": details, "component_breakdown": component_issues}
+        return {
+            "severity": severity,
+            "message": message,
+            "details": details,
+            "component_breakdown": component_issues
+        }
 
     def _generate_packing_list(self, preferences: Dict, destination: Dict) -> List[str]:
         base_items = [
@@ -521,7 +588,7 @@ Rules:
             "Travel insurance documents",
             "Credit cards and some local currency",
             "Phone and chargers",
-            "Medications and prescriptions",
+            "Medications and prescriptions"
         ]
         destination_type = preferences.get("destination_type", "mixed")
         if "beach" in destination_type:
@@ -537,7 +604,7 @@ Rules:
             "Learn a few basic phrases in the local language",
             "Keep copies of important documents",
             "Stay hydrated and aware of local food safety",
-            f"Check weather forecast before departure - {destination.get('weather_info', 'varies')}",
+            f"Check weather forecast before departure - {destination.get('weather_info', 'varies')}"
         ]
 
     def _get_local_transport_tips(self, destination: Dict) -> List[str]:
@@ -545,7 +612,7 @@ Rules:
             "Use ride-hailing apps for convenience",
             "Public transport is often the most economical option",
             "Consider renting a scooter or car for flexibility",
-            "Always agree on taxi fares before starting the journey",
+            "Always agree on taxi fares before starting the journey"
         ]
 
     def _get_accommodation_tips(self, preferences: Dict, destination: Dict) -> List[str]:
@@ -553,22 +620,35 @@ Rules:
             "Book accommodations in central locations for easy access",
             "Read recent reviews before booking",
             "Confirm amenities like WiFi, air conditioning before arrival",
-            "Consider the neighborhood safety and proximity to attractions",
+            "Consider the neighborhood safety and proximity to attractions"
         ]
 
-    def _build_planning_notes(self, preferences: Dict, destination: Dict, flight_result: Dict, hotel_result: Dict) -> Dict:
+    def _build_planning_notes(
+        self,
+        preferences: Dict,
+        destination: Dict,
+        flight_result: Dict,
+        hotel_result: Dict
+    ) -> Dict:
         notes = {"defaults_used": [], "limitations": [], "alternatives_available": []}
         if not preferences.get("dates", {}).get("departure"):
             notes["defaults_used"].append(
-                f"Travel dates set to 30 days from today ({flight_result.get('search_params', {}).get('departure_date')}) as no specific dates were provided"
+                f"Travel dates set to 30 days from today "
+                f"({flight_result.get('search_params', {}).get('departure_date')}) "
+                f"as no specific dates were provided"
             )
         if not hotel_result.get("success"):
-            hotel_msg = hotel_result.get("message", "")
             city_code = hotel_result.get("search_params", {}).get("city_code", "destination")
-            notes["limitations"].append(f"Hotel availability limited in {city_code}. {hotel_msg}")
-            notes["alternatives_available"].append("Consider searching hotels directly or specifying an alternative nearby city")
+            notes["limitations"].append(
+                f"Hotel availability limited in {city_code}. {hotel_result.get('message', '')}"
+            )
+            notes["alternatives_available"].append(
+                "Consider searching hotels directly or specifying an alternative nearby city"
+            )
         if not flight_result.get("success"):
-            notes["limitations"].append(f"Flight search encountered issues: {flight_result.get('error', 'Unknown error')}")
+            notes["limitations"].append(
+                f"Flight search encountered issues: {flight_result.get('error', 'Unknown error')}"
+            )
         if not preferences.get("budget", {}).get("total"):
             notes["defaults_used"].append("Budget estimates provided as no specific budget was mentioned")
         return notes
@@ -578,5 +658,5 @@ Rules:
             "emergency_number": "Check local emergency services (911, 112, etc.)",
             "nearest_embassy": f"Contact your embassy in {destination.get('country', 'the destination')}",
             "travel_insurance": "Keep your travel insurance hotline number accessible",
-            "local_police": "Note local police station location near your accommodation",
+            "local_police": "Note local police station location near your accommodation"
         }
