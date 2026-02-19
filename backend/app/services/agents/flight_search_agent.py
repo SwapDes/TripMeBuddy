@@ -7,32 +7,16 @@ logger = logging.getLogger(__name__)
 
 
 class FlightSearchAgent:
-    """Agent to search flights using Amadeus API with currency conversion and budget constraints"""
+    # Agent to search flights using Amadeus API with currency conversion and budget constraints
 
     def __init__(self, amadeus_service, currency_service=None):
-        """
-        Initialize with Amadeus service and optional currency service
 
-        Args:
-            amadeus_service: Instance of AmadeusService
-            currency_service: Optional CurrencyService for price conversion
-        """
         self.amadeus = amadeus_service
         self.currency_service = currency_service
         logger.info("FlightSearchAgent initialized")
 
     def search(self, preferences: Dict, destination: Dict, budget_allocation: Optional[Dict] = None) -> Dict:
-        """
-        Search for flights based on preferences, destination, and budget allocation
 
-        Args:
-            preferences: User preferences from PreferencesAnalyzerAgent
-            destination: Selected destination from DestinationResearchAgent
-            budget_allocation: Optional budget allocation from BudgetAllocator
-
-        Returns:
-            Dict with flight search results
-        """
         try:
             logger.info("Searching flights for trip plan")
 
@@ -148,7 +132,7 @@ class FlightSearchAgent:
             }
 
     def _filter_by_budget(self, flights: List[Dict], max_price_per_person: float, currency: str) -> List[Dict]:
-        """Filter flights that exceed budget allocation"""
+        # Filter flights that exceed budget allocation
         
         filtered_flights = []
         for flight in flights:
@@ -177,7 +161,7 @@ class FlightSearchAgent:
         return filtered_flights
 
     def _add_currency_conversions(self, flights: List[Dict], target_currency: str) -> List[Dict]:
-        """Add converted prices to flight results"""
+        # Add converted prices to flight results
 
         # Run async conversion in sync context
         loop = asyncio.new_event_loop()
@@ -188,7 +172,7 @@ class FlightSearchAgent:
             loop.close()
 
     async def _add_currency_conversions_async(self, flights: List[Dict], target_currency: str) -> List[Dict]:
-        """Async version of currency conversion"""
+        # Async version of currency conversion
 
         for flight in flights:
             try:
@@ -238,7 +222,7 @@ class FlightSearchAgent:
         return flights
 
     def _get_origin_code(self, preferences: Dict) -> Optional[str]:
-        """Extract origin airport code from preferences"""
+        # Extract origin airport code from preferences
         origin = preferences.get('origin')
 
         if not origin:
@@ -315,7 +299,7 @@ class FlightSearchAgent:
         return departure_date, return_date
 
     def _rank_flights(self, flights: List[Dict], preferences: Dict, budget_allocation: Optional[Dict] = None) -> List[Dict]:
-        """Rank flights based on preferences (price, duration, stops) and budget adherence"""
+        # Rank flights based on preferences (price, duration, stops) and budget adherence
 
         budget_level = preferences.get('budget', {}).get('budget_level', 'mid-range')
 

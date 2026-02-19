@@ -7,16 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 class HotelSearchAgent:
-    """Agent to search hotels using Amadeus API with currency conversion and budget constraints"""
+    # Agent to search hotels using Amadeus API with currency conversion and budget constraints
 
     def __init__(self, amadeus_service, currency_service=None):
-        """
-        Initialize with Amadeus service and optional currency service
 
-        Args:
-            amadeus_service: Instance of AmadeusService
-            currency_service: Optional CurrencyService for price conversion
-        """
         self.amadeus = amadeus_service
         self.currency_service = currency_service
         logger.info("HotelSearchAgent initialized")
@@ -28,18 +22,7 @@ class HotelSearchAgent:
         flight_result: Dict,
         budget_allocation: Optional[Dict] = None
     ) -> Dict:
-        """
-        Search for hotels based on preferences, destination, flight dates, and budget
 
-        Args:
-            preferences: User preferences from PreferencesAnalyzerAgent
-            destination: Selected destination from DestinationResearchAgent
-            flight_result: Flight search results with dates
-            budget_allocation: Optional budget allocation from BudgetAllocationService
-
-        Returns:
-            Dict with hotel search results
-        """
         try:
             logger.info("Searching hotels for trip plan")
 
