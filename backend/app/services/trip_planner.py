@@ -64,7 +64,10 @@ class TripPlanner:
             gemini_api_key=gemini_api_key,
             currency_service=self.currency_service
         )
-        self.destination_agent = DestinationResearchAgent(gemini_api_key)
+        self.destination_agent = DestinationResearchAgent(
+            gemini_api_key=gemini_api_key,
+            amadeus_service=amadeus_service
+        )
         self.flight_agent = FlightSearchAgent(
             amadeus_service=amadeus_service,
             currency_service=self.currency_service
