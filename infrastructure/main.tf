@@ -1,7 +1,12 @@
-# Trip Me Buddy
-# - Terraform Infrastructure Configuration
-# Phase 1: Foundation Infrastructure
-# Phase 2: ECS & Keycloak Preparation (Cost Optimized)
+# ==============================================================================
+# Trip Me Buddy — Terraform Infrastructure
+# ==============================================================================
+# Cost control: set services_running=false to scale all ECS services to 0.
+# RDS has no Terraform stop equivalent — use CLI when not needed:
+#   Stop:  aws rds stop-db-instance --db-instance-identifier trip-me-buddy-postgres --region us-east-1
+#   Start: aws rds start-db-instance --db-instance-identifier trip-me-buddy-postgres --region us-east-1
+# ElastiCache cannot be stopped — it must be destroyed and recreated (cheap at cache.t3.micro).
+# ==============================================================================
 
 terraform {
   required_version = ">= 1.0"
@@ -22,59 +27,50 @@ provider "aws" {
 # ==============================================================================
 
 variable "aws_region" {
-  description = "AWS region for resources"
+  description = "AWS region for all resources"
   type        = string
   default     = "us-east-1"
 }
 
 variable "project_name" {
-  description = "Project name for resource tagging"
+  description = "Project name used as prefix on all resource names and tags"
   type        = string
   default     = "trip-me-buddy"
 }
 
 variable "environment" {
-  description = "Environment (dev, staging, prod)"
+  description = "Environment tag applied to all resources"
   type        = string
   default     = "dev"
 }
 
-variable "db_username" {
-  description = "Database master username"
-  type        = string
-  default     = "postgres"
-  sensitive   = true
+variable "services_running" {
+  description = <<-EOT
+    Controls whether ECS services are running.
+    true  = desired_count 1 (normal operation)
+    false = desired_count 0 (cost saving mode — containers stopped, config preserved)
+    Usage: terraform apply -var="services_running=false"
+  EOT
+  type    = bool
+  default = true
 }
 
-variable "db_password" {
-  description = "Database master password"
-  type        = string
-  sensitive   = true
-}
+# ==============================================================================
+# DATA SOURCES
+# ==============================================================================
 
-variable "keycloak_admin_user" {
-  description = "Keycloak admin username"
-  type        = string
-  default     = "admin"
-  sensitive   = true
-}
-
-variable "keycloak_admin_password" {
-  description = "Keycloak admin password"
-  type        = string
-  sensitive   = true
-}
-
-# Data sources
 data "aws_availability_zones" "available" {
   state = "available"
 }
 
+data "aws_region" "current" {}
+
+data "aws_caller_identity" "current" {}
+
 # ==============================================================================
-# NETWORKING (VPC & SUBNETS)
+# NETWORKING
 # ==============================================================================
 
-# VPC
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -87,7 +83,6 @@ resource "aws_vpc" "main" {
   }
 }
 
-# Internet Gateway
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
@@ -98,7 +93,7 @@ resource "aws_internet_gateway" "main" {
   }
 }
 
-# Public Subnets
+# Public subnets — ECS tasks run here with assign_public_ip=true to avoid NAT Gateway cost
 resource "aws_subnet" "public_1" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
@@ -127,7 +122,7 @@ resource "aws_subnet" "public_2" {
   }
 }
 
-# Private Subnets
+# Private subnets — RDS and ElastiCache live here
 resource "aws_subnet" "private_1" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.10.0/24"
@@ -155,41 +150,41 @@ resource "aws_subnet" "private_2" {
 }
 
 # ==============================================================================
-# NAT GATEWAY (COST OPTIMIZATION: COMMENTED OUT)
-# Saving ~$32/month by not deploying NAT Gateway.
-# ECS Tasks will be placed in Public Subnets instead.
+# NAT GATEWAY — COMMENTED OUT (saves ~$32/month)
+# ECS tasks use public subnets with assign_public_ip=true instead.
+# NOTE: A NAT Gateway (nat-0adcfa5de722d437d) was manually added to the private
+# route table via CLI/Console and is not managed by Terraform. If it is removed,
+# private subnets lose outbound internet access (RDS/Redis are not affected as
+# they only need inbound connections from ECS tasks).
+# To bring NAT Gateway under Terraform management, uncomment these blocks and
+# add nat_gateway_id to the private route table route block.
 # ==============================================================================
 
 # resource "aws_eip" "nat" {
-#   domain = "vpc"
-#
+#   domain     = "vpc"
+#   depends_on = [aws_internet_gateway.main]
 #   tags = {
 #     Name        = "${var.project_name}-nat-eip"
 #     Project     = var.project_name
 #     Environment = var.environment
 #   }
-#
-#   depends_on = [aws_internet_gateway.main]
 # }
 
 # resource "aws_nat_gateway" "main" {
 #   allocation_id = aws_eip.nat.id
 #   subnet_id     = aws_subnet.public_1.id
-#
+#   depends_on    = [aws_internet_gateway.main]
 #   tags = {
 #     Name        = "${var.project_name}-nat"
 #     Project     = var.project_name
 #     Environment = var.environment
 #   }
-#
-#   depends_on = [aws_internet_gateway.main]
 # }
 
 # ==============================================================================
-# ROUTING
+# ROUTE TABLES
 # ==============================================================================
 
-# Route Table for Public Subnets
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -205,11 +200,11 @@ resource "aws_route_table" "public" {
   }
 }
 
-# Route Table for Private Subnets
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
-  # COST OPTIMIZATION: Route to NAT Gateway is commented out
+  # No route defined here — NAT Gateway route was manually added (see note above).
+  # If NAT is uncommented above, add:
   # route {
   #   cidr_block     = "0.0.0.0/0"
   #   nat_gateway_id = aws_nat_gateway.main.id
@@ -222,7 +217,6 @@ resource "aws_route_table" "private" {
   }
 }
 
-# Route Table Associations - Public
 resource "aws_route_table_association" "public_1" {
   subnet_id      = aws_subnet.public_1.id
   route_table_id = aws_route_table.public.id
@@ -233,7 +227,6 @@ resource "aws_route_table_association" "public_2" {
   route_table_id = aws_route_table.public.id
 }
 
-# Route Table Associations - Private
 resource "aws_route_table_association" "private_1" {
   subnet_id      = aws_subnet.private_1.id
   route_table_id = aws_route_table.private.id
@@ -248,135 +241,6 @@ resource "aws_route_table_association" "private_2" {
 # SECURITY GROUPS
 # ==============================================================================
 
-# Security Group for RDS
-resource "aws_security_group" "rds" {
-  name        = "${var.project_name}-rds-sg"
-  description = "Security group for RDS PostgreSQL"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description = "PostgreSQL from private AND public subnets"
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [
-      aws_subnet.private_1.cidr_block,
-      aws_subnet.private_2.cidr_block,
-      # ADDED: Allow Public Subnets (ECS Tasks) to reach DB
-      aws_subnet.public_1.cidr_block,
-      aws_subnet.public_2.cidr_block
-    ]
-  }
-
-  egress {
-    description = "Allow all outbound"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name        = "${var.project_name}-rds-sg"
-    Project     = var.project_name
-    Environment = var.environment
-  }
-}
-
-# Security Group for Redis
-resource "aws_security_group" "redis" {
-  name        = "${var.project_name}-redis-sg"
-  description = "Security group for Redis ElastiCache"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description = "Redis from private AND public subnets"
-    from_port   = 6379
-    to_port     = 6379
-    protocol    = "tcp"
-    cidr_blocks = [
-      aws_subnet.private_1.cidr_block,
-      aws_subnet.private_2.cidr_block,
-      # ADDED: Allow Public Subnets (ECS Tasks) to reach Redis
-      aws_subnet.public_1.cidr_block,
-      aws_subnet.public_2.cidr_block
-    ]
-  }
-
-  egress {
-    description = "Allow all outbound"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name        = "${var.project_name}-redis-sg"
-    Project     = var.project_name
-    Environment = var.environment
-  }
-}
-
-# Security Group for Keycloak
-resource "aws_security_group" "keycloak" {
-  name        = "${var.project_name}-keycloak-sg"
-  description = "Security group for Keycloak ECS tasks"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description = "Keycloak from ALB"
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Will be restricted to ALB security group later
-  }
-
-  egress {
-    description = "Allow all outbound"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name        = "${var.project_name}-keycloak-sg"
-    Project     = var.project_name
-    Environment = var.environment
-  }
-}
-
-# Security Group for Backend
-resource "aws_security_group" "backend" {
-  name        = "${var.project_name}-backend-sg"
-  description = "Security group for Backend ECS tasks"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description = "Backend from ALB"
-    from_port   = 8000
-    to_port     = 8000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Will be restricted to ALB security group later
-  }
-
-  egress {
-    description = "Allow all outbound"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name        = "${var.project_name}-backend-sg"
-    Project     = var.project_name
-    Environment = var.environment
-  }
-}
-
-# Security Group for ALB
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-alb-sg"
   description = "Security group for Application Load Balancer"
@@ -413,11 +277,140 @@ resource "aws_security_group" "alb" {
   }
 }
 
+resource "aws_security_group" "keycloak" {
+  name        = "${var.project_name}-keycloak-sg"
+  description = "Security group for Keycloak ECS tasks"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "Keycloak from ALB"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.project_name}-keycloak-sg"
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+resource "aws_security_group" "backend" {
+  name        = "${var.project_name}-backend-sg"
+  description = "Security group for Backend ECS tasks"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "Backend from ALB"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.project_name}-backend-sg"
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+resource "aws_security_group" "rds" {
+  name        = "${var.project_name}-rds-sg"
+  description = "Security group for RDS PostgreSQL"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "PostgreSQL from private and public subnets"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [
+      aws_subnet.private_1.cidr_block,
+      aws_subnet.private_2.cidr_block,
+      aws_subnet.public_1.cidr_block,
+      aws_subnet.public_2.cidr_block,
+    ]
+  }
+
+  ingress {
+    description     = "PostgreSQL from backend ECS security group"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.backend.id]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.project_name}-rds-sg"
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
+resource "aws_security_group" "redis" {
+  name        = "${var.project_name}-redis-sg"
+  description = "Security group for Redis ElastiCache"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "Redis from private and public subnets"
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = [
+      aws_subnet.private_1.cidr_block,
+      aws_subnet.private_2.cidr_block,
+      aws_subnet.public_1.cidr_block,
+      aws_subnet.public_2.cidr_block,
+    ]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.project_name}-redis-sg"
+    Project     = var.project_name
+    Environment = var.environment
+  }
+}
+
 # ==============================================================================
-# DATABASES (RDS & REDIS)
+# DATABASES
 # ==============================================================================
 
-# DB Subnet Group
 resource "aws_db_subnet_group" "main" {
   name       = "${var.project_name}-db-subnet-group"
   subnet_ids = [aws_subnet.private_1.id, aws_subnet.private_2.id]
@@ -429,11 +422,6 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
-# Data sources for dynamic values
-data "aws_region" "current" {}
-data "aws_caller_identity" "current" {}
-
-# RDS PostgreSQL Instance
 resource "aws_db_instance" "postgres" {
   identifier     = "${var.project_name}-postgres"
   engine         = "postgres"
@@ -445,23 +433,33 @@ resource "aws_db_instance" "postgres" {
   storage_type          = "gp3"
   storage_encrypted     = true
 
- db_name  = "tripmebbuddy_v2"
-  username = var.db_username
-  password = var.db_password
+  db_name  = "tripmebbuddy_v2"
+  username = "postgres"
+  # Password is not stored in Terraform. Set it on first apply then rotate via
+  # AWS Console. The ignore_changes lifecycle below ensures Terraform never
+  # attempts to change or expose the password after initial creation.
+  password = "SET_ON_FIRST_APPLY_ONLY"
 
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
 
-  multi_az                = false  # Set to true for production
+  multi_az                = false
   publicly_accessible     = false
   backup_retention_period = 7
   backup_window           = "03:00-04:00"
   maintenance_window      = "mon:04:00-mon:05:00"
 
-  skip_final_snapshot       = true  # Set to false for production
+  skip_final_snapshot       = true
   final_snapshot_identifier = "${var.project_name}-final-snapshot"
 
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+
+  lifecycle {
+    ignore_changes = [
+      engine_version, # AWS patches minor versions automatically
+      password,       # Managed outside Terraform after initial creation
+    ]
+  }
 
   tags = {
     Name        = "${var.project_name}-postgres"
@@ -470,7 +468,6 @@ resource "aws_db_instance" "postgres" {
   }
 }
 
-# ElastiCache Subnet Group
 resource "aws_elasticache_subnet_group" "main" {
   name       = "${var.project_name}-redis-subnet-group"
   subnet_ids = [aws_subnet.private_1.id, aws_subnet.private_2.id]
@@ -482,7 +479,6 @@ resource "aws_elasticache_subnet_group" "main" {
   }
 }
 
-# ElastiCache Redis Cluster
 resource "aws_elasticache_cluster" "redis" {
   cluster_id           = "${var.project_name}-redis"
   engine               = "redis"
@@ -492,12 +488,16 @@ resource "aws_elasticache_cluster" "redis" {
   parameter_group_name = "default.redis7"
   port                 = 6379
 
-  subnet_group_name    = aws_elasticache_subnet_group.main.name
-  security_group_ids   = [aws_security_group.redis.id]
+  subnet_group_name  = aws_elasticache_subnet_group.main.name
+  security_group_ids = [aws_security_group.redis.id]
 
-  snapshot_retention_limit = 0  # No snapshots for dev environment
+  snapshot_retention_limit = 0
   snapshot_window          = "03:00-05:00"
   maintenance_window       = "mon:05:00-mon:07:00"
+
+  lifecycle {
+    ignore_changes = [engine_version]
+  }
 
   tags = {
     Name        = "${var.project_name}-redis"
@@ -507,42 +507,19 @@ resource "aws_elasticache_cluster" "redis" {
 }
 
 # ==============================================================================
-# PHASE 2: ECS & KEYCLOAK INFRASTRUCTURE
+# IAM
 # ==============================================================================
 
-# 1. ECR Repository (To store Keycloak Docker images)
-resource "aws_ecr_repository" "keycloak" {
-  name                 = "trip-me-buddy-keycloak"
-  image_tag_mutability = "MUTABLE"
-  force_delete         = true # Allows destroying repo even if it contains images
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = {
-    Name        = "${var.project_name}-keycloak-repo"
-    Project     = var.project_name
-    Environment = var.environment
-  }
-}
-
-# 2. IAM Roles for ECS
-# Task Execution Role: Allows Fargate to pull images from ECR and send logs to CloudWatch
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "${var.project_name}-ecs-task-execution-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
-      }
-    ]
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
   })
 }
 
@@ -551,13 +528,31 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# 3. Application Load Balancer (ALB)
+resource "aws_iam_role_policy" "ecs_ssm_policy" {
+  name = "${var.project_name}-ecs-ssm-policy"
+  role = aws_iam_role.ecs_task_execution_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameters", "ssm:GetParameter"]
+      Resource = ["arn:aws:ssm:us-east-1:*:parameter/trip-me-buddy/*"]
+    }]
+  })
+}
+
+# ==============================================================================
+# APPLICATION LOAD BALANCER
+# ==============================================================================
+
 resource "aws_lb" "main" {
   name               = "${var.project_name}-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = [aws_subnet.public_1.id, aws_subnet.public_2.id]
+  idle_timeout       = 300
 
   tags = {
     Name        = "${var.project_name}-alb"
@@ -566,7 +561,6 @@ resource "aws_lb" "main" {
   }
 }
 
-# ALB Listener (HTTP - forwarding to Keycloak for now)
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
@@ -582,7 +576,10 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# 4. ECS Cluster
+# ==============================================================================
+# ECS CLUSTER & CLOUDWATCH
+# ==============================================================================
+
 resource "aws_ecs_cluster" "main" {
   name = "${var.project_name}-cluster"
 
@@ -598,7 +595,6 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
-# 5. CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "ecs_logs" {
   name              = "/ecs/${var.project_name}"
   retention_in_days = 7
@@ -615,50 +611,50 @@ resource "aws_cloudwatch_log_group" "ecs_logs" {
 # ==============================================================================
 
 output "vpc_id" {
-  description = "VPC ID"
-  value       = aws_vpc.main.id
+  value = aws_vpc.main.id
 }
 
 output "public_subnet_ids" {
-  description = "Public subnet IDs"
-  value       = [aws_subnet.public_1.id, aws_subnet.public_2.id]
+  value = [aws_subnet.public_1.id, aws_subnet.public_2.id]
 }
 
 output "private_subnet_ids" {
-  description = "Private subnet IDs"
-  value       = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+  value = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+}
+
+output "alb_dns_name" {
+  value = aws_lb.main.dns_name
+}
+
+output "ecs_cluster_name" {
+  value = aws_ecs_cluster.main.name
 }
 
 output "rds_endpoint" {
-  description = "RDS PostgreSQL endpoint"
-  value       = aws_db_instance.postgres.endpoint
-  sensitive   = true
+  value     = aws_db_instance.postgres.endpoint
+  sensitive = true
 }
 
 output "rds_database_name" {
-  description = "RDS database name"
-  value       = aws_db_instance.postgres.db_name
+  value = aws_db_instance.postgres.db_name
 }
 
 output "redis_endpoint" {
-  description = "Redis ElastiCache endpoint"
-  value       = aws_elasticache_cluster.redis.cache_nodes[0].address
-  sensitive   = true
+  value     = aws_elasticache_cluster.redis.cache_nodes[0].address
+  sensitive = true
 }
 
 output "redis_port" {
-  description = "Redis port"
-  value       = aws_elasticache_cluster.redis.port
+  value = aws_elasticache_cluster.redis.port
 }
 
 output "security_group_ids" {
-  description = "Security group IDs"
   value = {
+    alb      = aws_security_group.alb.id
+    backend  = aws_security_group.backend.id
+    keycloak = aws_security_group.keycloak.id
     rds      = aws_security_group.rds.id
     redis    = aws_security_group.redis.id
-    keycloak = aws_security_group.keycloak.id
-    backend  = aws_security_group.backend.id
-    alb      = aws_security_group.alb.id
   }
 }
 
@@ -667,12 +663,11 @@ output "ecr_repository_url" {
   value       = aws_ecr_repository.keycloak.repository_url
 }
 
-output "alb_dns_name" {
-  description = "ALB DNS Name"
-  value       = aws_lb.main.dns_name
+output "backend_ecr_repository_url" {
+  description = "ECR Repository URL for Backend"
+  value       = aws_ecr_repository.backend.repository_url
 }
 
-output "ecs_cluster_name" {
-  description = "ECS Cluster Name"
-  value       = aws_ecs_cluster.main.name
+output "backend_service_name" {
+  value = aws_ecs_service.backend.name
 }

@@ -1,0 +1,304 @@
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  ~ update in-place
+-/+ destroy and then create replacement
+
+Terraform will perform the following actions:
+
+  # aws_db_instance.postgres will be updated in-place
+  ~ resource "aws_db_instance" "postgres" {
+        id                                    = "db-JP******************"
+        tags                                  = {
+            "Environment" = "dev"
+            "Name"        = "trip-me-buddy-postgres"
+            "Project"     = "trip-me-buddy"
+        }
+      # Warning: this attribute value will no longer be marked as sensitive
+      # after applying this change. The value is unchanged.
+      ~ username                              = (sensitive value)
+        # (72 unchanged attributes hidden)
+    }
+
+  # aws_ecr_repository.backend will be updated in-place
+  ~ resource "aws_ecr_repository" "backend" {
+      + force_delete         = true
+        id                   = "trip-me-buddy-backend"
+        name                 = "trip-me-buddy-backend"
+        tags                 = {
+            "Environment" = "dev"
+            "Name"        = "trip-me-buddy-backend-repo"
+            "Project"     = "trip-me-buddy"
+        }
+        # (5 unchanged attributes hidden)
+
+        # (2 unchanged blocks hidden)
+    }
+
+  # aws_ecr_repository.keycloak will be updated in-place
+  ~ resource "aws_ecr_repository" "keycloak" {
+      + force_delete         = true
+        id                   = "trip-me-buddy-keycloak"
+        name                 = "trip-me-buddy-keycloak"
+        tags                 = {
+            "Environment" = "dev"
+            "Name"        = "trip-me-buddy-keycloak-repo"
+            "Project"     = "trip-me-buddy"
+        }
+        # (5 unchanged attributes hidden)
+
+        # (2 unchanged blocks hidden)
+    }
+
+  # aws_ecs_task_definition.backend must be replaced
+-/+ resource "aws_ecs_task_definition" "backend" {
+      ~ arn                      = "arn:aws:ecs:us-east-1:<ACCOUNT_ID>:task-definition/trip-me-buddy-backend-task:6" -> (known after apply)
+      ~ arn_without_revision     = "arn:aws:ecs:us-east-1:<ACCOUNT_ID>:task-definition/trip-me-buddy-backend-task" -> (known after apply)
+      ~ container_definitions    = jsonencode(
+          ~ [
+              ~ {
+                  ~ environment      = [
+                        {
+                            name  = "ALGORITHM"
+                            value = "RS256"
+                        },
+                      ~ {
+                            name  = "BACKEND_CORS_ORIGINS"
+                          ~ value = jsonencode(
+                              ~ [
+                                  - "http://localhost:3000",
+                                    "http://localhost:5173",
+                                  + "http://localhost:3000",
+                                  + "https://tripmebuddy.senseddreams.com",
+                                  + "https://senseddreams.com",
+                                ]
+                            )
+                        },
+                        {
+                            name  = "DB_HOST"
+                            value = "<RDS_ENDPOINT>"
+                        },
+                        # (2 unchanged elements hidden)
+                        {
+                            name  = "DEBUG"
+                            value = "False"
+                        },
+                      ~ {
+                          ~ name  = "KEYCLOAK_CLIENT_ID" -> "KEYCLOAK_BACKEND_CLIENT_ID"
+                            # (1 unchanged attribute hidden)
+                        },
+                      + {
+                          + name  = "KEYCLOAK_BACKEND_CLIENT_SECRET"
+                          + value = ""
+                        },
+                      + {
+                          + name  = "KEYCLOAK_CLIENT_ID"
+                          + value = "trip-me-buddy-frontend"
+                        },
+                        {
+                            name  = "KEYCLOAK_REALM"
+                            value = "tripmebuddy"
+                        },
+                        # (7 unchanged elements hidden)
+                    ]
+                  + healthCheck      = {
+                      + command     = [
+                          + "CMD-SHELL",
+                          + "curl -f http://localhost:8000/health || exit 1",
+                        ]
+                      + interval    = 30
+                      + retries     = 3
+                      + startPeriod = 60
+                      + timeout     = 5
+                    }
+                  - mountPoints      = []
+                    name             = "backend"
+                  - systemControls   = []
+                  - volumesFrom      = []
+                    # (5 unchanged attributes hidden)
+                },
+            ] # forces replacement
+        )
+      ~ enable_fault_injection   = false -> (known after apply)
+      ~ id                       = "trip-me-buddy-backend-task" -> (known after apply)
+      ~ revision                 = 6 -> (known after apply)
+        tags                     = {
+            "Environment" = "dev"
+            "Name"        = "trip-me-buddy-backend-task"
+            "Project"     = "trip-me-buddy"
+        }
+        # (12 unchanged attributes hidden)
+    }
+
+  # aws_ecs_task_definition.keycloak must be replaced
+-/+ resource "aws_ecs_task_definition" "keycloak" {
+      ~ arn                      = "arn:aws:ecs:us-east-1:<ACCOUNT_ID>:task-definition/trip-me-buddy-keycloak-task:3" -> (known after apply)
+      ~ arn_without_revision     = "arn:aws:ecs:us-east-1:<ACCOUNT_ID>:task-definition/trip-me-buddy-keycloak-task" -> (known after apply)
+      # Warning: this attribute value will no longer be marked as sensitive
+      # after applying this change.
+      ~ container_definitions    = (sensitive value) # forces replacement
+      ~ enable_fault_injection   = false -> (known after apply)
+      ~ id                       = "trip-me-buddy-keycloak-task" -> (known after apply)
+      ~ revision                 = 3 -> (known after apply)
+        tags                     = {
+            "Environment" = "dev"
+            "Name"        = "trip-me-buddy-keycloak-task"
+            "Project"     = "trip-me-buddy"
+        }
+        # (12 unchanged attributes hidden)
+    }
+
+  # aws_lb_listener_rule.backend will be updated in-place
+  ~ resource "aws_lb_listener_rule" "backend" {
+        id           = "arn:aws:elasticloadbalancing:us-east-1:<ACCOUNT_ID>:listener-rule/app/trip-me-buddy-alb/9a0fdaa259c20e8c/56e4f1628508ff7d/5e98057f54a457e6"
+        tags         = {}
+        # (4 unchanged attributes hidden)
+
+      ~ action {
+          + target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:<ACCOUNT_ID>:targetgroup/trip-me-buddy-backend-tg/43aae11a2f0c5d89"
+            # (2 unchanged attributes hidden)
+
+            # (1 unchanged block hidden)
+        }
+
+        # (1 unchanged block hidden)
+    }
+
+  # aws_lb_listener_rule.keycloak will be updated in-place
+  ~ resource "aws_lb_listener_rule" "keycloak" {
+        id           = "arn:aws:elasticloadbalancing:us-east-1:<ACCOUNT_ID>:listener-rule/app/trip-me-buddy-alb/9a0fdaa259c20e8c/56e4f1628508ff7d/a49f9560ce272f63"
+        tags         = {}
+        # (4 unchanged attributes hidden)
+
+      ~ action {
+          + target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:<ACCOUNT_ID>:targetgroup/trip-me-buddy-keycloak-tg/24cbe783d3840452"
+            # (2 unchanged attributes hidden)
+
+            # (1 unchanged block hidden)
+        }
+
+        # (1 unchanged block hidden)
+    }
+
+  # aws_security_group.rds will be updated in-place
+  ~ resource "aws_security_group" "rds" {
+        id                     = "<SG_ID>"
+      ~ ingress                = [
+          - {
+              - cidr_blocks      = [
+                  - "<IP_ADDRESS>/24",
+                  - "<IP_ADDRESS>/24",
+                  - "<IP_ADDRESS>/24",
+                  - "<IP_ADDRESS>/24",
+                ]
+              - description      = "PostgreSQL from private AND public subnets"
+              - from_port        = 5432
+              - ipv6_cidr_blocks = []
+              - prefix_list_ids  = []
+              - protocol         = "tcp"
+              - security_groups  = []
+              - self             = false
+              - to_port          = 5432
+            },
+          - {
+              - cidr_blocks      = []
+              - from_port        = 5432
+              - ipv6_cidr_blocks = []
+              - prefix_list_ids  = []
+              - protocol         = "tcp"
+              - security_groups  = [
+                  - "<SG_ID>",
+                ]
+              - self             = false
+              - to_port          = 5432
+                # (1 unchanged attribute hidden)
+            },
+          + {
+              + cidr_blocks      = [
+                  + "<IP_ADDRESS>/24",
+                  + "<IP_ADDRESS>/24",
+                  + "<IP_ADDRESS>/24",
+                  + "<IP_ADDRESS>/24",
+                ]
+              + description      = "PostgreSQL from private and public subnets"
+              + from_port        = 5432
+              + ipv6_cidr_blocks = []
+              + prefix_list_ids  = []
+              + protocol         = "tcp"
+              + security_groups  = []
+              + self             = false
+              + to_port          = 5432
+            },
+          + {
+              + cidr_blocks      = []
+              + description      = "PostgreSQL from backend ECS security group"
+              + from_port        = 5432
+              + ipv6_cidr_blocks = []
+              + prefix_list_ids  = []
+              + protocol         = "tcp"
+              + security_groups  = [
+                  + "<SG_ID>",
+                ]
+              + self             = false
+              + to_port          = 5432
+            },
+        ]
+        name                   = "trip-me-buddy-rds-sg"
+      + revoke_rules_on_delete = false
+        tags                   = {
+            "Environment" = "dev"
+            "Name"        = "trip-me-buddy-rds-sg"
+            "Project"     = "trip-me-buddy"
+        }
+        # (7 unchanged attributes hidden)
+    }
+
+  # aws_security_group.redis will be updated in-place
+  ~ resource "aws_security_group" "redis" {
+        id                     = "<SG_ID>"
+      ~ ingress                = [
+          - {
+              - cidr_blocks      = [
+                  - "<IP_ADDRESS>/24",
+                  - "<IP_ADDRESS>/24",
+                  - "<IP_ADDRESS>/24",
+                  - "<IP_ADDRESS>/24",
+                ]
+              - description      = "Redis from private AND public subnets"
+              - from_port        = 6379
+              - ipv6_cidr_blocks = []
+              - prefix_list_ids  = []
+              - protocol         = "tcp"
+              - security_groups  = []
+              - self             = false
+              - to_port          = 6379
+            },
+          + {
+              + cidr_blocks      = [
+                  + "<IP_ADDRESS>/24",
+                  + "<IP_ADDRESS>/24",
+                  + "<IP_ADDRESS>/24",
+                  + "<IP_ADDRESS>/24",
+                ]
+              + description      = "Redis from private and public subnets"
+              + from_port        = 6379
+              + ipv6_cidr_blocks = []
+              + prefix_list_ids  = []
+              + protocol         = "tcp"
+              + security_groups  = []
+              + self             = false
+              + to_port          = 6379
+            },
+        ]
+        name                   = "trip-me-buddy-redis-sg"
+      + revoke_rules_on_delete = false
+        tags                   = {
+            "Environment" = "dev"
+            "Name"        = "trip-me-buddy-redis-sg"
+            "Project"     = "trip-me-buddy"
+        }
+        # (7 unchanged attributes hidden)
+    }
+
+Plan: 2 to add, 7 to change, 2 to destroy.
+
