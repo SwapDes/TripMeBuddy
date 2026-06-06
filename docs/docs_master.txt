@@ -1,0 +1,135 @@
+================================================================================
+TripMeBuddy — Project Documentation Master File
+================================================================================
+Last updated: 8 March 2026
+
+================================================================================
+SECTION: PROJECT PAUSE — SHUTDOWN SUMMARY (8 March 2026)
+================================================================================
+
+STATUS: Project paused indefinitely to minimise AWS costs during job search.
+Target monthly cost reduced from ~$90–130/month to ~$5–8/month.
+
+--------------------------------------------------------------------------------
+WHAT WAS DESTROYED
+--------------------------------------------------------------------------------
+Resource                          Terraform target                         Reason
+-------------------------------   -----------------------------------------   ------
+Application Load Balancer         aws_lb.main                              $11.50/mo
+ALB Listeners (HTTP, HTTPS)       aws_lb_listener.{http,https}             included above
+ALB Target Groups                 aws_lb_target_group.{keycloak,backend}   included above
+ALB Listener Rules                aws_lb_listener_rule.{keycloak,backend}  included above
+ECS Service — Keycloak            aws_ecs_service.keycloak                 $0 but needed ALB
+ECS Service — Backend             aws_ecs_service.backend                  $0 but needed ALB
+ElastiCache Redis                 aws_elasticache_cluster.redis            $13/mo
+VPC Interface Endpoint — SSM      aws_vpc_endpoint.ssm                     $7/mo
+VPC Interface Endpoint — Lambda   aws_vpc_endpoint.lambda                  $7/mo
+VPC Interface Endpoint — Redshift aws_vpc_endpoint.redshift_data           $7/mo
+
+Total savings: ~$45/month from targeted destroys.
+
+ECS task definitions (keycloak rev 7, backend rev 23) are NOT destroyed.
+ECR images (keycloak, backend :latest) are NOT destroyed.
+Lambda functions (etl-extract, etl-transform, etl-load) are NOT destroyed.
+S3 buckets are NOT destroyed.
+RDS is STOPPED (storage ~$2.30/month).
+Redshift Serverless namespace/workgroup exist (storage ~$1–2/month).
+Bastion EC2 is STOPPED ($0 when stopped).
+EventBridge ETL rule is DISABLED (not destroyed).
+
+--------------------------------------------------------------------------------
+WHAT WAS PRESERVED
+--------------------------------------------------------------------------------
+Resource                          Notes
+-------------------------------   -----------------------------------------------
+RDS PostgreSQL                    Stopped. Data fully intact. Must start before terraform apply.
+Keycloak ECS task def (rev 7)     Backed up to backups/trip-me-buddy-keycloak-task_20260307.json
+Backend ECS task def (rev 23)     Backed up to backups/trip-me-buddy-backend-task_20260307.json
+ECR images                        Both repos at :latest, digests in backups/ecr_*.json
+Lambda code                       In backend/etl/ and deployed to AWS. Configs backed up.
+SSM parameters (8)                Backed up with decrypted values to backups/ssm_parameters_20260307.json
+Terraform state                   Backed up to backups/terraform.tfstate.{backup,final}.20260307
+Route 53 / ACM certs              Backed up to backups/route53_*.json and backups/acm_certs_20260307.json
+Redshift data                     Namespace/workgroup preserved. ETL data accumulates from next restart.
+RDS database dump                 Full pg_dump (custom + SQL) in backups/rds_tripmebbuddy_v2_20260307.*
+
+--------------------------------------------------------------------------------
+LANDING PAGE
+--------------------------------------------------------------------------------
+Static HTML page deployed to S3 bucket: tripmebuddy-frontend-beta
+Served by CloudFront distribution: (ID in AWS Console)
+URL: https://tripmebuddy.senseddreams.com
+Content: pause notice, contact email + LinkedIn + CV PDF link
+File: frontend/pause-page/index.html
+TODO: Replace YOUR_EMAIL and YOUR_LINKEDIN placeholders.
+TODO: Add CV PDF to frontend/pause-page/assets/cv.pdf and upload to S3.
+
+--------------------------------------------------------------------------------
+RESTART INSTRUCTIONS
+--------------------------------------------------------------------------------
+See PAUSE_RESUME.md at the project root for the full step-by-step restart playbook.
+Estimated restart time: 15–20 minutes.
+
+================================================================================
+SECTION: ETL PIPELINE — TECHNICAL NOTES
+================================================================================
+
+Pipeline: extract → transform → load (async Lambda-to-Lambda)
+Trigger:  EventBridge rule "trip-me-buddy-etl-nightly" at 02:00 UTC (currently DISABLED)
+Source:   RDS tripmebbuddy_v2 → S3 staging → Redshift Serverless tripmebuddy_analytics
+
+Tables loaded into Redshift:
+  fact_trips          — core trip records (TRUNCATE + COPY)
+  dim_users           — user records (TRUNCATE + COPY)
+  dim_destinations    — destination records (TRUNCATE + COPY)
+  dim_flights_hotels  — flight/hotel records (TRUNCATE + COPY)
+  dim_exchange_rates  — daily FX rates (APPEND ONLY — historical accumulation)
+                        Source: api.exchangerate-api.com/v4/latest/USD (~166 currencies, base USD)
+                        Load strategy: DELETE current date's rows, then COPY — preserves history
+
+Known issue resolved (2026-03-03):
+  Frankfurter API (api.frankfurter.app) returned HTTP 403 from Lambda IP ranges.
+  Switched to exchangerate-api.com (same API used by backend CurrencyService).
+
+Lambda configs:
+  extract:   timeout=300s, memory=512MB, handler=extract.handler
+  transform: timeout=300s, memory=512MB, handler=transform.handler
+  load:      timeout=900s, memory=512MB, handler=load.handler (long for Redshift cold start)
+
+Redshift cold start: first query of the day takes 35–40s (serverless auto-resume).
+Load lambda polls every 5s × 120 iterations = 600s max per SQL statement.
+
+================================================================================
+SECTION: POWER BI — CONNECTION NOTES
+================================================================================
+
+Connection type: Amazon Redshift (Npgsql driver)
+Server: localhost:5439  (via SSH tunnel through bastion EC2)
+Database: tripmebuddy_analytics
+Username: admin
+
+Prerequisites:
+  1. Start bastion EC2 (instance ID in etl.tfvars)
+  2. Open SSH tunnel:
+     ssh -i ~/.ssh/ec2_trip_me_buddy.pem \
+       -L 5439:<redshift-workgroup-endpoint>:5439 \
+       ec2-user@BASTION_IP -N
+  3. In Power BI: File → Options → Data source settings → clear cached credentials before reconnecting.
+
+Known issue: "Failed to enable constraints" error on import.
+Fix: Use Value.NativeQuery with explicit SELECT instead of direct table load.
+Example M query:
+  let
+    Source = AmazonRedshift.Database("localhost:5439", "tripmebuddy_analytics"),
+    db = Source{[Name="tripmebuddy_analytics"]}[Data],
+    schema = db{[Name="public"]}[Data],
+    result = Value.NativeQuery(schema, "SELECT col1, col2 FROM fact_trips", null, [EnableFolding=false])
+  in result
+
+SSL requirement: Redshift enforces SSL + SCRAM-SHA-256.
+  Do NOT click OK on "Encryption Support" dialog — it tries unencrypted fallback which breaks SCRAM auth.
+  If auth fails: clear credentials in File → Options → Data source settings, then reconnect fresh.
+
+================================================================================
+END OF DOCS_MASTER.TXT
+================================================================================
